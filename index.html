@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="id">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>My Zona - Absensi Sales Samarinda</title>
+
+  <meta name="theme-color" content="#3730a3">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      user-select: none;
+    }
+
+    /* Perbaikan: Membuat peta terkunci pas di kontainernya, anti-tenggelam */
+    #map {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      z-index: 1;
+    }
+
+    .leaflet-touch .leaflet-bar {
+      border: none;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+
+    ::-webkit-scrollbar {
+      width: 4px;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+
+<body class="bg-slate-100 h-screen overflow-hidden flex flex-col">
+
+  <!-- Header Aplikasi -->
+  <header class="bg-indigo-800 text-white px-3 py-2 shadow-md flex justify-between items-center z-20 shrink-0">
+    <div class="flex items-center space-x-2">
+      <div class="bg-white/20 p-1.5 rounded-lg text-white"><i class="fa-solid fa-location-crosshairs"></i></div>
+      <div>
+        <h1 class="font-bold text-sm leading-tight">My Zona Samarinda</h1>
+        <p class="text-[10px] text-indigo-200">ID: <span id="display-sales-name"
+            class="font-semibold underline cursor-pointer" onclick="changeSalesName()">Sales Samarinda</span></p>
+      </div>
+    </div>
+    <div id="sync-badge"
+      class="text-[9px] bg-amber-500 px-2 py-1 rounded-full text-white font-medium flex items-center gap-1 shadow">
+      <span id="sync-dot" class="w-1.5 h-1.5 rounded-full bg-white"></span>
+      <span id="sync-text">Offline</span>
+    </div>
+  </header>
+
+  <!-- Tab Navigasi Atas -->
+  <div
+    class="bg-white border-b border-slate-200 flex justify-around text-xs font-semibold text-slate-500 z-10 shadow-sm shrink-0">
+    <button onclick="switchTab('map-view')" id="tab-map"
+      class="py-3 w-1/2 text-indigo-600 border-b-2 border-indigo-600 flex justify-center items-center gap-1.5">
+      <i class="fa-solid fa-map-marked-alt"></i> Peta Absen
+    </button>
+    <button onclick="switchTab('list-view')" id="tab-list" class="py-3 w-1/2 flex justify-center items-center gap-1.5">
+      <i class="fa-solid fa-list-check"></i> Riwayat (<span id="count-proyek">0</span>)
+    </button>
+  </div>
+
+  <!-- Main Container yang menyesuaikan tinggi layar -->
+  <main class="flex-1 relative overflow-hidden flex flex-col">
+
+    <!-- VIEW 1: MAP VIEW -->
+    <div id="view-map" class="flex-1 relative w-full h-full">
+      <!-- Peta Utama -->
+      <div id="map"></div>
+
+      <!-- Panel Info Peta Melayang (Anti Tenggelam) -->
+      <div class="absolute bottom-6 left-3 right-3 z-[1000] flex justify-between items-end gap-2 pointer-events-none">
+
+        <!-- Kotak Info (Kiri) -->
+        <div
+          class="bg-white/95 backdrop-blur p-2.5 rounded-xl shadow-lg border border-slate-200 flex-1 pointer-events-auto">
+          <div class="flex items-center justify-between mb-0.5">
+            <span class="text-[9px] font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-full"
+              id="gps-accuracy-badge">Menunggu GPS...</span>
+          </div>
+          <div class="font-bold text-slate-800 text-xs truncate" id="live-address-title">Mendeteksi...</div>
+          <div class="text-[9px] text-slate-500 truncate" id="live-address-detail">Mohon tunggu sebentar...</div>
+        </div>
+
+        <!-- Tombol Action (Kanan) -->
+        <div class="flex flex-col gap-2 shrink-0 pointer-events-auto">
+          <button onclick="getCurrentLocation(true)"
+            class="w-10 h-10 bg-white text-indigo-600 rounded-full shadow-lg flex items-center justify-center text-lg active:scale-95 border border-slate-200 self-end">
+            <i class="fa-solid fa-crosshairs"></i>
+          </button>
+          <button onclick="openAbsenModal()"
+            class="bg-indigo-600 text-white px-5 py-3 rounded-xl shadow-xl flex justify-center items-center gap-2 font-bold active:scale-95 text-xs">
+            <i class="fa-solid fa-camera"></i> Absen Disini
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- VIEW 2: LIST DATA PROYEK -->
+    <div id="view-list" class="hidden absolute inset-0 p-3 overflow-y-auto bg-slate-50 pb-20 z-10">
+      <div class="mb-3 flex gap-2">
+        <div class="relative flex-1">
+          <i class="fa-solid fa-search absolute left-3 top-2.5 text-slate-400 text-xs"></i>
+          <input type="text" id="search-input" onkeyup="renderProyekList()" placeholder="Cari toko / kelurahan..."
+            class="w-full pl-8 pr-3 py-2 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500">
+        </div>
+        <button onclick="exportToCSV()"
+          class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-lg text-xs font-bold shadow-sm flex items-center gap-1.5 active:scale-95 transition-all">
+          <i class="fa-solid fa-file-excel"></i> Export
+        </button>
+      </div>
+      <div id="proyek-container" class="space-y-3"></div>
+    </div>
+  </main>
+
+  <!-- Modal Form Absensi -->
+  <div id="modal-absen"
+    class="fixed inset-0 bg-black/60 backdrop-blur-sm z-[2000] hidden flex items-end justify-center transition-opacity">
+    <div class="bg-white w-full max-h-[90vh] rounded-t-2xl flex flex-col shadow-2xl overflow-hidden">
+      <div class="px-4 py-3 bg-indigo-800 text-white flex justify-between items-center shrink-0">
+        <h3 class="font-bold text-sm"><i class="fa-solid fa-clipboard-check mr-1.5"></i> Form Kunjungan Toko</h3>
+        <button onclick="closeAbsenModal()" class="text-indigo-200 hover:text-white p-1"><i
+            class="fa-solid fa-xmark text-lg"></i></button>
+      </div>
+
+      <div class="p-4 overflow-y-auto flex-1 space-y-4">
+        <div class="space-y-4">
+          <!-- Foto -->
+          <div>
+            <label class="block font-bold text-slate-700 text-xs mb-1.5">1. Foto Toko / Lokasi <span
+                class="text-red-500">*</span></label>
+            <div class="grid grid-cols-2 gap-2 mb-2">
+              <label for="camera-env-input"
+                class="bg-indigo-600 text-white p-2.5 rounded-lg font-semibold text-xs flex justify-center items-center gap-1.5 shadow-sm active:scale-95 cursor-pointer">
+                <i class="fa-solid fa-camera"></i> Kamera
+              </label>
+              <label for="gallery-file-input"
+                class="bg-slate-100 text-slate-600 border border-slate-300 p-2.5 rounded-lg font-semibold text-xs flex justify-center items-center gap-1.5 active:scale-95 cursor-pointer">
+                <i class="fa-solid fa-image"></i> Galeri
+              </label>
+              <input type="file" id="camera-env-input" accept="image/*" capture="environment" class="hidden"
+                onchange="previewImage(event)">
+              <input type="file" id="gallery-file-input" accept="image/*" class="hidden" onchange="previewImage(event)">
+            </div>
+            <div id="preview-placeholder"
+              class="border-2 border-dashed border-slate-300 rounded-lg p-3 text-center bg-slate-50">
+              <i class="fa-solid fa-camera-retro text-2xl text-slate-300 mb-1"></i>
+              <p class="text-[10px] text-slate-500">Foto otomatis diberi stempel GPS.</p>
+            </div>
+            <div id="preview-container" class="hidden relative">
+              <img id="img-preview" class="w-full h-32 object-cover rounded-lg border border-slate-200 shadow-sm">
+            </div>
+          </div>
+
+          <!-- Nama Toko -->
+          <div>
+            <label class="block font-bold text-slate-700 text-xs mb-1.5">2. Nama Toko / Klien <span
+                class="text-red-500">*</span></label>
+            <input type="text" id="input-nama-proyek" placeholder="Contoh: TB. Makmur Jaya"
+              class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500">
+          </div>
+        </div>
+
+        <div class="border-t border-slate-200 pt-2">
+          <button type="button" onclick="toggleOptionalDetails()"
+            class="w-full py-2 text-indigo-600 text-xs font-bold flex items-center justify-center gap-1.5 bg-indigo-50 rounded-lg">
+            <i id="toggle-icon" class="fa-solid fa-chevron-down"></i> Buka Catatan Pesanan (Opsional)
+          </button>
+        </div>
+
+        <div id="optional-details" class="hidden space-y-4 pb-4">
+          <!-- Rating -->
+          <div>
+            <label class="block font-bold text-slate-600 text-[10px] mb-1">Rating Potensi Toko</label>
+            <div class="flex gap-1 text-lg text-amber-400" id="rating-stars">
+              <i class="fa-solid fa-star" onclick="setRating(1)"></i>
+              <i class="fa-solid fa-star" onclick="setRating(2)"></i>
+              <i class="fa-solid fa-star" onclick="setRating(3)"></i>
+              <i class="fa-solid fa-star" onclick="setRating(4)"></i>
+              <i class="fa-regular fa-star text-slate-300" onclick="setRating(5)"></i>
+            </div>
+          </div>
+
+          <!-- Catatan / Keranjang Besar -->
+          <div class="bg-indigo-50 p-2.5 rounded-xl border border-indigo-100">
+            <label class="font-bold text-indigo-800 text-xs flex items-center gap-1.5 mb-1.5">
+              <i class="fa-solid fa-clipboard-list"></i> Catatan Pesanan / Follow Up
+            </label>
+            <textarea id="input-deskripsi" rows="4"
+              placeholder="Ketik daftar barang pesanan (cth: Keramik 60x60 = 5 Dus) atau hasil obrolan..."
+              class="w-full px-2.5 py-2 border border-indigo-200 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500 outline-none resize-none"></textarea>
+          </div>
+
+          <!-- Edit GPS Manual -->
+          <div class="bg-amber-50 p-2 rounded-xl border border-amber-200 text-xs">
+            <p class="font-bold text-amber-800 text-[10px] mb-1.5"><i class="fa-solid fa-pen-to-square"></i> Koreksi
+              Alamat (Jika Meleset)</p>
+            <input type="text" id="input-kelurahan" onchange="syncManualAddressInputs()"
+              class="w-full mb-1 border-amber-200 rounded px-2 py-1.5 text-xs" placeholder="Kelurahan">
+            <textarea id="input-alamat" rows="1" onchange="syncManualAddressInputs()"
+              class="w-full border-amber-200 rounded px-2 py-1.5 resize-none text-xs"
+              placeholder="Alamat Lengkap"></textarea>
+          </div>
+        </div>
+      </div>
+
+      <div class="p-3 bg-white border-t border-slate-200 flex gap-2 shrink-0">
+        <button onclick="closeAbsenModal()"
+          class="w-1/3 py-2.5 bg-slate-100 text-slate-600 rounded-lg font-bold text-xs">Batal</button>
+        <button onclick="simpanAbsensi()"
+          class="w-2/3 py-2.5 bg-indigo-600 text-white rounded-lg font-bold text-xs shadow-md flex justify-center items-center gap-1.5">
+          <i class="fa-solid fa-paper-plane"></i> Simpan Data
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <canvas id="watermark-canvas" class="hidden"></canvas>
+
+  <script>
+    let map, activeMarker, mapMarkersList = [];
+    let selectedLat = -0.50218, selectedLng = 117.15364;
+    let currentRating = 4;
+    let currentImageBase64 = '', rawUnstampedImage = null;
+    let salesName = localStorage.getItem('myzona_sales_name') || 'Sales Samarinda';
+    let addressInfo = {kelurahan: '', kota: '', alamatLengkap: ''};
+    window.dataProyekList = JSON.parse(localStorage.getItem('myzona_proyek') || '[]');
+
+    window.onload = function () {
+      document.getElementById('display-sales-name').innerText = salesName;
+      initMap();
+      renderProyekList();
+      updateProyekCount();
+    };
+
+    function changeSalesName() {
+      const newName = prompt("Nama / ID Anda:", salesName);
+      if (newName && newName.trim() !== '') {
+        salesName = newName.trim();
+        localStorage.setItem('myzona_sales_name', salesName);
+        document.getElementById('display-sales-name').innerText = salesName;
+      }
+    }
+
+    // PETA
+    function initMap() {
+      map = L.map('map', {zoomControl: false}).setView([selectedLat, selectedLng], 15);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom: 19}).addTo(map);
+
+      const customIcon = L.divIcon({
+        className: 'custom-div-icon',
+        html: `<div class="bg-indigo-600 text-white w-8 h-8 rounded-full flex items-center justify-center shadow-lg border-2 border-white transform -translate-x-1/2 -translate-y-1/2"><i class="fa-solid fa-location-dot text-sm"></i></div>`,
+        iconSize: [32, 32], iconAnchor: [16, 16]
+      });
+
+      activeMarker = L.marker([selectedLat, selectedLng], {draggable: true, icon: customIcon}).addTo(map);
+      activeMarker.on('dragend', function (e) {updateLocationInfo(activeMarker.getLatLng().lat, activeMarker.getLatLng().lng);});
+      map.on('click', function (e) {activeMarker.setLatLng(e.latlng); updateLocationInfo(e.latlng.lat, e.latlng.lng);});
+
+      getCurrentLocation();
+    }
+
+    function getCurrentLocation() {
+      document.getElementById('gps-accuracy-badge').innerText = "Mencari...";
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            const lat = position.coords.latitude; const lng = position.coords.longitude;
+            document.getElementById('gps-accuracy-badge').innerText = `Akurasi: ±${Math.round(position.coords.accuracy)}m`;
+            map.setView([lat, lng], 17);
+            activeMarker.setLatLng([lat, lng]);
+            updateLocationInfo(lat, lng);
+          },
+          (error) => {document.getElementById('gps-accuracy-badge').innerText = "GPS Error";},
+          {enableHighAccuracy: true, timeout: 10000}
+        );
+      }
+    }
+
+    async function updateLocationInfo(lat, lng) {
+      selectedLat = lat; selectedLng = lng;
+      try {
+        const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`);
+        const data = await res.json();
+        if (data && data.address) {
+          addressInfo.kelurahan = data.address.village || data.address.suburb || 'Samarinda';
+          addressInfo.alamatLengkap = data.display_name;
+        }
+      } catch (err) {
+        addressInfo.kelurahan = 'Area Samarinda'; addressInfo.alamatLengkap = `Lat: ${lat.toFixed(5)}, Lng: ${lng.toFixed(5)}`;
+      }
+      document.getElementById('live-address-title').innerText = addressInfo.kelurahan;
+      document.getElementById('live-address-detail').innerText = addressInfo.alamatLengkap;
+    }
+
+    // TABS NAV
+    function switchTab(tabName) {
+      const viewMap = document.getElementById('view-map');
+      const viewList = document.getElementById('view-list');
+      const tabMap = document.getElementById('tab-map');
+      const tabList = document.getElementById('tab-list');
+
+      if (tabName === 'map-view') {
+        viewList.classList.add('hidden');
+        tabMap.className = "py-3 w-1/2 text-indigo-600 border-b-2 border-indigo-600 flex justify-center items-center gap-1.5";
+        tabList.className = "py-3 w-1/2 text-slate-500 flex justify-center items-center gap-1.5";
+        setTimeout(() => map.invalidateSize(), 200);
+      } else {
+        viewList.classList.remove('hidden');
+        tabList.className = "py-3 w-1/2 text-indigo-600 border-b-2 border-indigo-600 flex justify-center items-center gap-1.5";
+        tabMap.className = "py-3 w-1/2 text-slate-500 flex justify-center items-center gap-1.5";
+        renderProyekList();
+      }
+    }
+
+    // MODAL
+    function openAbsenModal() {
+      document.getElementById('input-nama-proyek').value = '';
+      document.getElementById('preview-container').classList.add('hidden');
+      document.getElementById('preview-placeholder').classList.remove('hidden');
+      currentImageBase64 = ''; rawUnstampedImage = null;
+
+      document.getElementById('input-kelurahan').value = addressInfo.kelurahan;
+      document.getElementById('input-alamat').value = addressInfo.alamatLengkap;
+      document.getElementById('input-deskripsi').value = '';
+
+      const detailSection = document.getElementById('optional-details');
+      const icon = document.getElementById('toggle-icon');
+      detailSection.classList.add('hidden'); icon.className = "fa-solid fa-chevron-down";
+      setRating(4);
+      document.getElementById('modal-absen').classList.remove('hidden');
+    }
+    function closeAbsenModal() {document.getElementById('modal-absen').classList.add('hidden');}
+    function toggleOptionalDetails() {
+      const detailSection = document.getElementById('optional-details');
+      const icon = document.getElementById('toggle-icon');
+      if (detailSection.classList.contains('hidden')) {
+        detailSection.classList.remove('hidden'); icon.className = "fa-solid fa-chevron-up";
+        setTimeout(() => detailSection.scrollIntoView({behavior: 'smooth'}), 100);
+      } else {
+        detailSection.classList.add('hidden'); icon.className = "fa-solid fa-chevron-down";
+      }
+    }
+
+    // KAMERA & WATERMARK
+    function previewImage(event) {
+      const file = event.target.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = function (e) {
+          const img = new Image();
+          img.onload = function () {rawUnstampedImage = img; processWatermarkOnCanvas(img);};
+          img.src = e.target.result;
+        };
+        reader.readAsDataURL(file);
+      }
+    }
+
+    function processWatermarkOnCanvas(img) {
+      const canvas = document.getElementById('watermark-canvas');
+      const ctx = canvas.getContext('2d');
+      canvas.width = img.width; canvas.height = img.height;
+      ctx.drawImage(img, 0, 0);
+
+      const barHeight = Math.max(60, Math.floor(canvas.height * 0.15));
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.8)';
+      ctx.fillRect(0, canvas.height - barHeight, canvas.width, barHeight);
+
+      const fontSize = Math.max(12, Math.floor(barHeight * 0.25));
+      ctx.fillStyle = '#fbbf24'; ctx.font = `bold ${fontSize}px sans-serif`;
+      const kel = document.getElementById('input-kelurahan').value || addressInfo.kelurahan;
+      ctx.fillText(`📍 ${kel}`, 20, canvas.height - barHeight + fontSize + 10);
+
+      ctx.fillStyle = '#ffffff'; ctx.font = `${Math.floor(fontSize * 0.9)}px monospace`;
+      ctx.fillText(`Lat: ${selectedLat.toFixed(5)}, Lng: ${selectedLng.toFixed(5)}`, 20, canvas.height - barHeight + (fontSize * 2) + 12);
+
+      ctx.fillStyle = '#cbd5e1';
+      const time = new Date().toLocaleString('id-ID', {timeStyle: 'short', dateStyle: 'short'});
+      ctx.fillText(`👤 ${salesName} | 🕒 ${time}`, 20, canvas.height - 15);
+
+      currentImageBase64 = canvas.toDataURL('image/jpeg', 0.8);
+      document.getElementById('img-preview').src = currentImageBase64;
+      document.getElementById('preview-container').classList.remove('hidden');
+      document.getElementById('preview-placeholder').classList.add('hidden');
+    }
+    function syncManualAddressInputs() {if (rawUnstampedImage) processWatermarkOnCanvas(rawUnstampedImage);}
+    function setRating(stars) {
+      currentRating = stars;
+      const starsEls = document.getElementById('rating-stars').querySelectorAll('i');
+      starsEls.forEach((el, index) => {el.className = index < stars ? "fa-solid fa-star" : "fa-regular fa-star text-slate-300";});
+    }
+
+    // SIMPAN & TAMPILKAN
+    function simpanAbsensi() {
+      const nama = document.getElementById('input-nama-proyek').value.trim();
+      if (!currentImageBase64) return alert("Foto toko wajib diisi!");
+      if (!nama) return alert("Nama Toko wajib diisi!");
+
+      const newProyek = {
+        id: `proyek_${Date.now()}`,
+        salesName: salesName,
+        nama: nama,
+        kelurahan: document.getElementById('input-kelurahan').value || addressInfo.kelurahan,
+        alamat: document.getElementById('input-alamat').value || addressInfo.alamatLengkap,
+        lat: selectedLat, lng: selectedLng,
+        rating: currentRating, foto: currentImageBase64,
+        deskripsi: document.getElementById('input-deskripsi').value,
+        waktu: new Date().toLocaleString('id-ID', {dateStyle: 'short', timeStyle: 'short'})
+      };
+
+      window.dataProyekList.unshift(newProyek);
+      localStorage.setItem('myzona_proyek', JSON.stringify(window.dataProyekList));
+
+      closeAbsenModal(); updateProyekCount(); switchTab('list-view');
+    }
+    function updateProyekCount() {document.getElementById('count-proyek').innerText = window.dataProyekList.length;}
+
+    window.renderProyekList = function () {
+      const container = document.getElementById('proyek-container');
+      const searchVal = document.getElementById('search-input').value.toLowerCase();
+      const filtered = window.dataProyekList.filter(i => i.nama.toLowerCase().includes(searchVal) || i.kelurahan.toLowerCase().includes(searchVal));
+
+      if (filtered.length === 0) return container.innerHTML = `<p class="text-center text-slate-400 text-xs py-10">Belum ada riwayat kunjungan.</p>`;
+
+      container.innerHTML = filtered.map((item, index) => `
+                <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden mb-3">
+                    <div class="flex">
+                        <img src="${item.foto}" class="w-28 h-36 object-cover bg-slate-100">
+                        <div class="p-2.5 flex-1 flex flex-col justify-between min-w-0">
+                            <div>
+                                <div class="flex justify-between items-start">
+                                    <h4 class="font-bold text-slate-800 text-sm truncate mr-1">${item.nama}</h4>
+                                    <span class="text-[10px] text-amber-500 font-bold whitespace-nowrap">⭐ ${item.rating}</span>
+                                </div>
+                                <p class="text-[10px] text-slate-500 truncate mb-1"><i class="fa-solid fa-map-pin text-indigo-500"></i> ${item.kelurahan}</p>
+                                ${item.deskripsi ? `<div class="text-[10px] text-slate-600 bg-slate-50 p-1.5 rounded border border-slate-100 line-clamp-2">📝 ${item.deskripsi}</div>` : ''}
+                            </div>
+                            <div class="flex justify-between items-end mt-2 pt-2 border-t border-slate-100">
+                                <span class="text-[9px] font-mono text-slate-400">${item.waktu}</span>
+                                <div class="flex gap-3">
+                                    <button onclick="shareKeWhatsApp(${index})" class="text-emerald-600 bg-emerald-50 px-2 py-1 rounded text-xs font-bold flex items-center gap-1 active:scale-95 border border-emerald-100"><i class="fa-brands fa-whatsapp text-sm"></i> Kirim</button>
+                                    <button onclick="hapusProyek('${item.id}')" class="text-red-400 text-xs active:scale-95 px-1"><i class="fa-solid fa-trash"></i></button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+    };
+
+    // SHARE WHATSAPP
+    window.shareKeWhatsApp = function (index) {
+      const data = window.dataProyekList[index];
+      let waText = `*LAPORAN KUNJUNGAN SALES*\n`;
+      waText += `----------------------------\n`;
+      waText += `👤 *Sales:* ${data.salesName}\n`;
+      waText += `🏢 *Toko:* ${data.nama}\n`;
+      waText += `📍 *Area:* ${data.kelurahan}\n`;
+      waText += `📅 *Waktu:* ${data.waktu}\n`;
+      waText += `⭐ *Rating:* ${data.rating}/5\n`;
+
+      if (data.deskripsi) {waText += `\n*📦 Catatan Pesanan:*\n${data.deskripsi}\n`;}
+      waText += `\n*🗺️ Titik Peta (GPS):*\nhttps://www.google.com/maps?q=${data.lat},${data.lng}\n`;
+
+      window.open(`https://wa.me/?text=${encodeURIComponent(waText)}`, '_blank');
+    };
+
+    function hapusProyek(id) {
+      if (confirm("Hapus data kunjungan ini?")) {
+        window.dataProyekList = window.dataProyekList.filter(i => String(i.id) !== String(id));
+        localStorage.setItem('myzona_proyek', JSON.stringify(window.dataProyekList));
+        renderProyekList(); updateProyekCount();
+      }
+    }
+
+    // EXPORT CSV
+    window.exportToCSV = function () {
+      if (window.dataProyekList.length === 0) return alert("Belum ada data untuk diexport!");
+      let csvContent = "data:text/csv;charset=utf-8,Waktu Kunjungan,Nama Toko,Kelurahan,Alamat Lengkap,Rating,Latitude,Longitude,Catatan Pesanan,Nama Sales\n";
+      window.dataProyekList.forEach(row => {
+        let safeNama = row.nama.replace(/"/g, '""'); let safeAlamat = row.alamat.replace(/"/g, '""'); let safeCatatan = row.deskripsi ? row.deskripsi.replace(/"/g, '""') : "";
+        csvContent += `"${row.waktu}","${safeNama}","${row.kelurahan}","${safeAlamat}","${row.rating}","${row.lat}","${row.lng}","${safeCatatan}","${row.salesName}"\r\n`;
+      });
+      const link = document.createElement("a"); link.setAttribute("href", encodeURI(csvContent));
+      link.setAttribute("download", `Laporan_Sales_${new Date().toISOString().split('T')[0]}.csv`);
+      document.body.appendChild(link); link.click(); document.body.removeChild(link);
+    }
+  </script>
+</body>
+
+</html>
