@@ -253,6 +253,9 @@
       peta = L.map('peta').setView([-0.50218, 117.15364], 12);
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(peta);
       lapisanPin = L.layerGroup().addTo(peta);
+      // Lebar kotak peta ikut berubah saat batang gulir muncul atau layar
+      // diputar; tanpa ini sebagian ubin tertinggal kosong.
+      window.addEventListener('resize', () => peta.invalidateSize());
     }
 
     function gambarPin(daftar) {
@@ -279,7 +282,7 @@
             <div style="min-width:150px">
               <b>${esc(item.nama)}</b><br>
               <span style="color:#64748b">${esc(item.salesName)} · ${esc(waktuPanjang(item.waktu))}</span><br>
-              <a href="${esc(item.fotoUrl)}" target="_blank" rel="noopener">Lihat foto</a>
+              <a href="#" onclick="bukaFoto('${esc(item.id)}'); return false;">Lihat foto</a>
             </div>
           `)
           .addTo(lapisanPin);
@@ -287,6 +290,10 @@
       });
 
       if (titik.length) peta.fitBounds(titik, { padding: [40, 40], maxZoom: 16 });
+
+      // Kartu di bawah peta memuat foto belakangan dan bisa memunculkan batang
+      // gulir, yang menggeser lebar peta setelah ubin tergambar.
+      setTimeout(() => peta.invalidateSize(), 400);
     }
 
     // --- TAMPILAN ---
@@ -329,7 +336,7 @@
 
         return `
         <div class="bg-white rounded-xl border ${mencurigakan ? 'border-amber-300' : 'border-slate-200'} shadow-sm overflow-hidden flex">
-          <img src="${esc(item.fotoUrl)}" loading="lazy" onclick="bukaFoto('${esc(item.fotoUrl)}')"
+          <img data-foto="${esc(item.id)}" onclick="bukaFoto('${esc(item.id)}')"
             class="w-28 sm:w-36 object-cover bg-slate-100 cursor-zoom-in shrink-0">
           <div class="p-3 flex-1 flex flex-col justify-between min-w-0">
             <div class="min-w-0">
@@ -366,12 +373,44 @@
           </div>
         </div>`;
       }).join('');
+
+      wadah.querySelectorAll('img[data-foto]').forEach(el => pasangFoto(el, el.dataset.foto));
     }
 
-    function bukaFoto(url) {
-      if (!url) return;
-      document.getElementById('lightbox-img').src = url;
+    // Foto tidak punya alamat publik, jadi tidak bisa dipasang langsung ke
+    // <img src>. Diambil lewat fetch berkata sandi, lalu dijadikan alamat
+    // sementara di dalam peramban. Hasilnya disimpan supaya satu foto hanya
+    // diunduh sekali per sesi.
+    const fotoTersimpan = new Map();
+
+    async function alamatFoto(id) {
+      if (fotoTersimpan.has(id)) return fotoTersimpan.get(id);
+      const janji = (async () => {
+        const res = await fetch(`${API}?foto=${encodeURIComponent(id)}`, {
+          headers: { 'x-owner-password': sandi }
+        });
+        if (!res.ok) return '';
+        return URL.createObjectURL(await res.blob());
+      })().catch(() => '');
+      fotoTersimpan.set(id, janji);
+      return janji;
+    }
+
+    async function pasangFoto(el, id) {
+      const url = await alamatFoto(id);
+      if (url) el.src = url;
+      else el.replaceWith(Object.assign(document.createElement('div'), {
+        className: el.className + ' flex items-center justify-center text-slate-400 text-[10px]',
+        textContent: 'foto gagal dimuat'
+      }));
+    }
+
+    function bukaFoto(id) {
+      if (!id) return;
+      const img = document.getElementById('lightbox-img');
+      img.removeAttribute('src');
       document.getElementById('lightbox').classList.replace('hidden', 'flex');
+      alamatFoto(id).then(url => { if (url) img.src = url; });
     }
     function tutupFoto() {
       document.getElementById('lightbox').classList.replace('flex', 'hidden');
@@ -393,12 +432,12 @@
       if (daftar.length === 0) return alert('Tidak ada data untuk diexport.');
 
       const kolom = ['Waktu', 'Sales', 'Nama Toko', 'Kelurahan', 'Alamat', 'Rating',
-        'Latitude', 'Longitude', 'Akurasi GPS (m)', 'Geser dari GPS (m)', 'Catatan Pesanan', 'Link Foto'];
+        'Latitude', 'Longitude', 'Akurasi GPS (m)', 'Geser dari GPS (m)', 'Catatan Pesanan'];
       const sel = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
 
       const baris = daftar.map(i => [
         waktuPanjang(i.waktu), i.salesName, i.nama, i.kelurahan, i.alamat, i.rating,
-        i.lat, i.lng, i.akurasi, jarakMeter(i.lat, i.lng, i.gpsLat, i.gpsLng), i.deskripsi, i.fotoUrl
+        i.lat, i.lng, i.akurasi, jarakMeter(i.lat, i.lng, i.gpsLat, i.gpsLng), i.deskripsi
       ].map(sel).join(','));
 
       // ﻿ (BOM) supaya huruf beraksen tidak berantakan saat dibuka di Excel.

@@ -35,6 +35,11 @@ Buka proyek `absen-sales` di Vercel → menu **Storage** → **Create Database**
 beri nama bebas → **Connect** ke proyek ini.
 Vercel otomatis mengisi variabel `BLOB_READ_WRITE_TOKEN`.
 
+Store harus bertipe **Private**, dan **hanya boleh ada satu** blob store tersambung ke
+proyek ini. Kalau ada dua, hanya satu `BLOB_READ_WRITE_TOKEN` yang aktif dan tidak
+bisa dipastikan yang mana — akibatnya penyimpanan foto gagal dengan pesan seperti
+"Cannot use private access on a public store".
+
 **2. Database (Neon Postgres)**
 Menu **Storage** → **Create Database** → pilih **Neon Postgres** (paket gratis) →
 **Connect** ke proyek ini.
@@ -86,3 +91,7 @@ karena data itu belum ada di pusat.
   di kotak **Perlu Dicek**.
 - **Foto dikecilkan** ke lebar maksimal 1280px sebelum dikirim, supaya hemat kuota sales
   dan hemat biaya penyimpanan.
+- **Foto bersifat privat.** Tidak ada alamat publik yang bisa dibuka tanpa kata sandi;
+  dashboard mengambilnya lewat API yang dijaga `OWNER_PASSWORD`. Karena itu laporan
+  WhatsApp dari aplikasi sales berisi teks dan titik peta saja, tanpa lampiran foto.
+  Sales tetap melihat sisipan kecil foto di riwayat HP-nya sendiri.

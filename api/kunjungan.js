@@ -1,5 +1,5 @@
 import { neon } from '@neondatabase/serverless';
-import { put, del } from '@vercel/blob';
+import { put, del, get } from '@vercel/blob';
 
 // Dibuat saat dipakai, bukan saat berkas dimuat: neon() melempar galat kalau
 // DATABASE_URL belum diatur, dan itu mematikan fungsi sebelum sempat
@@ -80,7 +80,6 @@ function barisKeObjek(r) {
     akurasi: r.akurasi_m,
     rating: r.rating,
     deskripsi: r.deskripsi,
-    fotoUrl: r.foto_url,
     waktu: keIso(r.waktu),
   };
 }
@@ -141,8 +140,12 @@ async function simpanKunjungan(req, res) {
     return res.status(200).json({ ok: true, duplikat: true, fotoUrl: sudahAda[0].foto_url });
   }
 
+  // Penyimpanan bersifat privat: foto toko dan catatan pesanan pelanggan tidak
+  // boleh bisa dibuka siapa pun yang menebak alamatnya. Alamat yang tersimpan di
+  // sini tidak pernah dikirim ke peramban; dashboard mengambil foto lewat
+  // ?foto=<id> yang dijaga kata sandi pemilik.
   const { url: fotoUrl } = await put(`kunjungan/${id}.jpg`, isiFoto, {
-    access: 'public',
+    access: 'private',
     contentType: 'image/jpeg',
     addRandomSuffix: false,
     allowOverwrite: true, // percobaan ulang menulis ke jalur yang sama
@@ -165,9 +168,30 @@ async function simpanKunjungan(req, res) {
   return res.status(201).json({ ok: true, fotoUrl });
 }
 
+// --- PEMILIK: ambil satu foto ----------------------------------------------
+// Foto tidak punya alamat publik, jadi disalurkan lewat sini supaya kata sandi
+// pemilik tetap menjadi satu-satunya pintu masuk.
+async function ambilFoto(req, res, id) {
+  const baris = await db()`select foto_url from kunjungan where id = ${id}`;
+  if (baris.length === 0) return res.status(404).json({ error: 'Foto tidak ditemukan.' });
+
+  const hasil = await get(baris[0].foto_url, { access: 'private' });
+  if (!hasil || !hasil.stream) return res.status(404).json({ error: 'Foto tidak ditemukan.' });
+
+  const potongan = [];
+  for await (const p of hasil.stream) potongan.push(p);
+
+  res.setHeader('Content-Type', hasil.blob.contentType || 'image/jpeg');
+  res.setHeader('Cache-Control', 'private, max-age=3600');
+  return res.status(200).end(Buffer.concat(potongan.map((p) => Buffer.from(p))));
+}
+
 // --- PEMILIK: lihat semua kunjungan ----------------------------------------
 async function ambilKunjungan(req, res) {
   if (!pemilikSah(req)) return res.status(401).json({ error: 'Kata sandi pemilik salah.' });
+
+  const foto = teks(req.query?.foto, 80);
+  if (foto) return await ambilFoto(req, res, foto);
 
   const { dari, sampai, sales } = req.query || {};
   const filterSales = teks(sales, 60);

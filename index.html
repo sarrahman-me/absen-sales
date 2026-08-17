@@ -244,11 +244,18 @@
     const LEBAR_FOTO_MAKS = 1280;
     const MUTU_JPEG = 0.72;
 
+    // Setelah terkirim, foto ukuran penuh dibuang dari HP dan salinan di pusat
+    // bersifat privat (hanya pemilik yang boleh membuka). Sisipan kecil ini yang
+    // dipakai sales untuk mengenali riwayat kunjungannya sendiri: ~6 KB per foto,
+    // jadi ratusan kunjungan pun masih muat di penyimpanan peramban.
+    const LEBAR_SISIPAN = 160;
+    const MUTU_SISIPAN = 0.5;
+
     let map, activeMarker;
     let selectedLat = -0.50218, selectedLng = 117.15364;
     let gpsLat = null, gpsLng = null, gpsAkurasi = null;
     let currentRating = 4;
-    let currentImageBase64 = '', rawUnstampedImage = null;
+    let currentImageBase64 = '', currentThumbBase64 = '', rawUnstampedImage = null;
     let sedangMengirim = false;
     // Safari mode penyamaran melempar galat saat menyentuh localStorage, yang bisa
     // mematikan seluruh halaman kalau tidak dijaga.
@@ -399,7 +406,7 @@
       document.getElementById('input-nama-proyek').value = '';
       document.getElementById('preview-container').classList.add('hidden');
       document.getElementById('preview-placeholder').classList.remove('hidden');
-      currentImageBase64 = ''; rawUnstampedImage = null;
+      currentImageBase64 = ''; currentThumbBase64 = ''; rawUnstampedImage = null;
 
       document.getElementById('input-kelurahan').value = addressInfo.kelurahan;
       document.getElementById('input-alamat').value = addressInfo.alamatLengkap;
@@ -463,10 +470,22 @@
       ctx.fillText(`👤 ${salesName} | 🕒 ${time}`, 20, canvas.height - 15);
 
       currentImageBase64 = canvas.toDataURL('image/jpeg', MUTU_JPEG);
+      currentThumbBase64 = buatSisipan(canvas);
       document.getElementById('img-preview').src = currentImageBase64;
       document.getElementById('preview-container').classList.remove('hidden');
       document.getElementById('preview-placeholder').classList.add('hidden');
     }
+    // Sisipan dibuat dari kanvas yang sudah berstempel, jadi keterangan lokasi
+    // tetap terbaca walau kecil.
+    function buatSisipan(sumber) {
+      const kecil = document.createElement('canvas');
+      const skala = Math.min(1, LEBAR_SISIPAN / sumber.width);
+      kecil.width = Math.round(sumber.width * skala);
+      kecil.height = Math.round(sumber.height * skala);
+      kecil.getContext('2d').drawImage(sumber, 0, 0, kecil.width, kecil.height);
+      return kecil.toDataURL('image/jpeg', MUTU_SISIPAN);
+    }
+
     function syncManualAddressInputs() { if (rawUnstampedImage) processWatermarkOnCanvas(rawUnstampedImage); }
     function setRating(stars) {
       currentRating = stars;
@@ -491,6 +510,7 @@
         gpsLat, gpsLng, akurasi: gpsAkurasi,
         rating: currentRating,
         foto: currentImageBase64,
+        thumb: currentThumbBase64,
         deskripsi: document.getElementById('input-deskripsi').value,
         waktu: new Date().toISOString(),
         status: 'pending'
@@ -527,10 +547,8 @@
           });
 
           if (res.ok) {
-            const hasil = await res.json();
             item.status = 'synced';
-            item.fotoUrl = hasil.fotoUrl;
-            delete item.foto; // base64 dibuang supaya memori HP tidak penuh
+            delete item.foto; // base64 ukuran penuh dibuang, sisipan kecil tetap disimpan
             simpanRiwayat();
             renderProyekList();
           } else if (res.status >= 400 && res.status < 500) {
@@ -603,7 +621,7 @@
       container.innerHTML = hasil.map((item) => `
         <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden mb-3">
           <div class="flex">
-            <img src="${esc(item.foto || item.fotoUrl || '')}" loading="lazy" class="w-28 h-36 object-cover bg-slate-100">
+            <img src="${esc(item.thumb || item.foto || '')}" loading="lazy" class="w-28 h-36 object-cover bg-slate-100">
             <div class="p-2.5 flex-1 flex flex-col justify-between min-w-0">
               <div>
                 <div class="flex justify-between items-start">
@@ -640,8 +658,9 @@
       waText += `📅 *Waktu:* ${waktuSingkat(data.waktu)}\n`;
       waText += `⭐ *Rating:* ${data.rating}/5\n`;
       if (data.deskripsi) waText += `\n*📦 Catatan Pesanan:*\n${data.deskripsi}\n`;
+      // Foto sengaja tidak dilampirkan: salinan di pusat bersifat privat dan
+      // hanya terbuka lewat dashboard pemilik.
       waText += `\n*🗺️ Titik Peta (GPS):*\nhttps://www.google.com/maps?q=${data.lat},${data.lng}\n`;
-      if (data.fotoUrl) waText += `\n*📷 Foto:*\n${data.fotoUrl}\n`;
 
       window.open(`https://wa.me/?text=${encodeURIComponent(waText)}`, '_blank');
     }
