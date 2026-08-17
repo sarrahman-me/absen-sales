@@ -3,10 +3,13 @@
 
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <!-- Cubit-untuk-perbesar sengaja tidak dikunci: sales sering perlu memperbesar
+       peta atau teks catatan. Semua kolom isian berukuran 16px supaya iOS tidak
+       ikut memperbesar layar sendiri saat kolom disentuh. -->
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>My Zona - Absensi Sales Samarinda</title>
 
-  <meta name="theme-color" content="#3730a3">
+  <meta name="theme-color" content="#312e81">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -17,222 +20,299 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
   <style>
+    :root {
+      /* Tinggi bilah bawah + area aman iPhone, dipakai sebagai jarak dasar
+         supaya tidak ada tombol yang tertutup batang beranda. */
+      --aman-bawah: env(safe-area-inset-bottom, 0px);
+    }
+
+    html, body {
+      height: 100%;
+      overscroll-behavior-y: none;
+    }
+
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+      -webkit-font-smoothing: antialiased;
     }
 
-    /* Peta terkunci pas di kontainernya, anti-tenggelam */
-    #map {
-      position: absolute;
-      top: 0;
-      bottom: 0;
-      left: 0;
-      right: 0;
-      z-index: 1;
-    }
+    /* Satuan dvh mengikuti bilah alamat peramban HP yang muncul-hilang saat
+       digulir; 100vh membuat bagian bawah terpotong di Safari. */
+    .tinggi-layar { height: 100vh; height: 100dvh; }
 
-    .leaflet-touch .leaflet-bar {
-      border: none;
-      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-    }
+    #map { position: absolute; inset: 0; z-index: 1; }
 
-    ::-webkit-scrollbar {
-      width: 4px;
-    }
+    /* Elemen antarmuka tidak bisa disorot supaya seret peta terasa mulus,
+       tapi teks catatan tetap bisa disalin. */
+    header, nav, button, label { user-select: none; }
 
-    ::-webkit-scrollbar-thumb {
-      background: #cbd5e1;
-      border-radius: 4px;
+    .leaflet-touch .leaflet-bar { border: none; box-shadow: 0 4px 12px rgb(15 23 42 / .12); }
+    .leaflet-container { font-family: inherit; }
+
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 99px; }
+
+    .kartu-lembut { box-shadow: 0 1px 2px rgb(15 23 42 / .04), 0 8px 24px -12px rgb(15 23 42 / .18); }
+    .naik { animation: naik .22s cubic-bezier(.32, .72, 0, 1); }
+    @keyframes naik { from { transform: translateY(14px); opacity: 0 } to { transform: none; opacity: 1 } }
+    .redup-masuk { animation: redup .18s ease-out; }
+    @keyframes redup { from { opacity: 0 } to { opacity: 1 } }
+
+    .denyut { animation: denyut 1.4s ease-in-out infinite; }
+    @keyframes denyut { 0%, 100% { opacity: 1 } 50% { opacity: .35 } }
+
+    /* Batas dua baris. Dipasang pada elemen tanpa jarak dalam sendiri —
+       kalau elemen ber-padding, sisa baris berikutnya ikut terlihat. */
+    .baris-2 {
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
     }
   </style>
 </head>
 
-<body class="bg-slate-100 h-screen overflow-hidden flex flex-col">
+<body class="bg-slate-100 text-slate-900 tinggi-layar flex flex-col overflow-hidden">
 
-  <!-- Header Aplikasi -->
-  <header class="bg-indigo-800 text-white px-3 py-2 shadow-md flex justify-between items-center z-20 shrink-0">
-    <div class="flex items-center space-x-2">
-      <div class="bg-white/20 p-1.5 rounded-lg text-white"><i class="fa-solid fa-location-crosshairs"></i></div>
-      <div>
-        <h1 class="font-bold text-sm leading-tight">My Zona Samarinda</h1>
-        <p class="text-[10px] text-indigo-200">ID: <span id="display-sales-name"
-            class="font-semibold underline cursor-pointer" onclick="changeSalesName()">Sales Samarinda</span></p>
+  <!-- ================= HEADER ================= -->
+  <header class="bg-gradient-to-r from-indigo-900 to-indigo-700 text-white shrink-0 z-30 shadow-lg"
+    style="padding-top: env(safe-area-inset-top, 0px)">
+    <div class="mx-auto w-full max-w-7xl px-3 sm:px-5 h-14 sm:h-16 flex items-center justify-between gap-3">
+
+      <div class="flex items-center gap-2.5 min-w-0">
+        <div class="bg-white/15 ring-1 ring-white/25 w-9 h-9 rounded-xl grid place-items-center shrink-0">
+          <i class="fa-solid fa-location-crosshairs"></i>
+        </div>
+        <div class="min-w-0">
+          <h1 class="font-bold text-[15px] leading-tight truncate">My Zona</h1>
+          <button onclick="changeSalesName()"
+            class="flex items-center gap-1 text-[11px] text-indigo-200 hover:text-white transition max-w-full">
+            <i class="fa-solid fa-user text-[9px]"></i>
+            <span id="display-sales-name" class="truncate font-medium">Sales Samarinda</span>
+            <i class="fa-solid fa-pen text-[8px] opacity-70"></i>
+          </button>
+        </div>
       </div>
+
+      <button id="sync-badge" onclick="sinkronkanSekarang()" aria-label="Status pengiriman data"
+        class="shrink-0 text-[11px] font-semibold px-2.5 sm:px-3 py-1.5 rounded-full text-white flex items-center gap-1.5 shadow-sm ring-1 ring-white/20 active:scale-95 transition bg-slate-500">
+        <span id="sync-dot" class="w-1.5 h-1.5 rounded-full bg-white"></span>
+        <span id="sync-text">Memeriksa...</span>
+      </button>
     </div>
-    <button id="sync-badge" onclick="sinkronkanSekarang()"
-      class="text-[9px] bg-slate-500 px-2 py-1 rounded-full text-white font-medium flex items-center gap-1 shadow active:scale-95">
-      <span id="sync-dot" class="w-1.5 h-1.5 rounded-full bg-white"></span>
-      <span id="sync-text">Memeriksa...</span>
-    </button>
   </header>
 
-  <!-- Tab Navigasi Atas -->
-  <div
-    class="bg-white border-b border-slate-200 flex justify-around text-xs font-semibold text-slate-500 z-10 shadow-sm shrink-0">
-    <button onclick="switchTab('map-view')" id="tab-map"
-      class="py-3 w-1/2 text-indigo-600 border-b-2 border-indigo-600 flex justify-center items-center gap-1.5">
-      <i class="fa-solid fa-map-marked-alt"></i> Peta Absen
-    </button>
-    <button onclick="switchTab('list-view')" id="tab-list" class="py-3 w-1/2 flex justify-center items-center gap-1.5">
-      <i class="fa-solid fa-list-check"></i> Riwayat (<span id="count-proyek">0</span>)
-    </button>
-  </div>
+  <!-- ================= ISI ================= -->
+  <!-- Di layar lebar peta dan riwayat tampil berdampingan; di HP bergantian
+       lewat bilah tab bawah. -->
+  <main class="flex-1 min-h-0 w-full flex flex-col lg:grid lg:grid-cols-[minmax(0,1fr)_400px] xl:grid-cols-[minmax(0,1fr)_460px]">
 
-  <!-- Main Container yang menyesuaikan tinggi layar -->
-  <main class="flex-1 relative overflow-hidden flex flex-col">
-
-    <!-- VIEW 1: MAP VIEW -->
-    <div id="view-map" class="flex-1 relative w-full h-full">
-      <!-- Peta Utama -->
+    <!-- ---- PETA ---- -->
+    <section id="view-map" class="relative flex-1 min-h-0 w-full">
       <div id="map"></div>
 
-      <!-- Panel Info Peta Melayang (Anti Tenggelam) -->
-      <div class="absolute bottom-6 left-3 right-3 z-[1000] flex justify-between items-end gap-2 pointer-events-none">
+      <!-- Panel melayang: keterangan lokasi + tombol utama -->
+      <div class="absolute inset-x-3 sm:inset-x-4 bottom-3 sm:bottom-4 z-[1000] pointer-events-none">
+        <div class="mx-auto max-w-md lg:mx-0 flex flex-col items-stretch gap-2.5">
 
-        <!-- Kotak Info (Kiri) -->
-        <div
-          class="bg-white/95 backdrop-blur p-2.5 rounded-xl shadow-lg border border-slate-200 flex-1 pointer-events-auto">
-          <div class="flex items-center justify-between mb-0.5">
-            <span class="text-[9px] font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-full"
-              id="gps-accuracy-badge">Menunggu GPS...</span>
+          <div class="flex justify-end">
+            <button onclick="getCurrentLocation()" aria-label="Cari posisi saya sekarang"
+              class="pointer-events-auto w-11 h-11 bg-white text-indigo-700 rounded-full kartu-lembut grid place-items-center text-lg active:scale-95 transition ring-1 ring-slate-200">
+              <i id="ikon-gps" class="fa-solid fa-crosshairs"></i>
+            </button>
           </div>
-          <div class="font-bold text-slate-800 text-xs truncate" id="live-address-title">Mendeteksi...</div>
-          <div class="text-[9px] text-slate-500 truncate" id="live-address-detail">Mohon tunggu sebentar...</div>
-        </div>
 
-        <!-- Tombol Action (Kanan) -->
-        <div class="flex flex-col gap-2 shrink-0 pointer-events-auto">
-          <button onclick="getCurrentLocation()"
-            class="w-10 h-10 bg-white text-indigo-600 rounded-full shadow-lg flex items-center justify-center text-lg active:scale-95 border border-slate-200 self-end">
-            <i class="fa-solid fa-crosshairs"></i>
-          </button>
-          <button onclick="openAbsenModal()"
-            class="bg-indigo-600 text-white px-5 py-3 rounded-xl shadow-xl flex justify-center items-center gap-2 font-bold active:scale-95 text-xs">
-            <i class="fa-solid fa-camera"></i> Absen Disini
+          <div class="pointer-events-auto bg-white/95 backdrop-blur rounded-2xl kartu-lembut ring-1 ring-slate-200 p-3 sm:p-3.5">
+            <div class="flex items-center gap-2 mb-1.5">
+              <span id="gps-accuracy-badge"
+                class="text-[11px] font-bold text-indigo-700 bg-indigo-50 ring-1 ring-indigo-100 px-2 py-0.5 rounded-full">Menunggu GPS...</span>
+            </div>
+            <div class="font-bold text-slate-900 text-[15px] leading-tight truncate" id="live-address-title">Mendeteksi...</div>
+            <div class="text-[11px] text-slate-500 leading-snug baris-2 mt-0.5" id="live-address-detail">Mohon tunggu sebentar...</div>
+
+            <button onclick="openAbsenModal()"
+              class="mt-3 w-full bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-xl font-bold text-[15px] flex justify-center items-center gap-2 shadow-lg shadow-indigo-600/25 active:scale-[.98] transition">
+              <i class="fa-solid fa-camera"></i> Absen Disini
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ---- RIWAYAT ---- -->
+    <!-- "hidden" menang atas "flex" karena Tailwind menaruhnya belakangan,
+         jadi tampil/sembunyi cukup diatur dengan menambah/membuang satu kelas. -->
+    <section id="view-list"
+      class="hidden flex flex-col flex-1 min-h-0 bg-slate-50 lg:border-l lg:border-slate-200">
+
+      <div class="shrink-0 bg-white border-b border-slate-200 px-3 sm:px-4 py-3">
+        <div class="hidden lg:flex items-center justify-between mb-3">
+          <h2 class="font-bold text-slate-800 text-sm">Riwayat Kunjungan</h2>
+          <span class="text-[11px] text-slate-500"><span id="count-proyek-lg">0</span> tersimpan di HP ini</span>
+        </div>
+        <!-- Di tablet daftar dibatasi lebarnya supaya baris teks tidak terlalu
+             panjang; di kolom samping layar besar batas ini tidak berpengaruh. -->
+        <div class="flex gap-2 mx-auto w-full max-w-3xl">
+          <div class="relative flex-1">
+            <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+            <input type="text" id="search-input" onkeyup="renderProyekList()" placeholder="Cari toko / kelurahan..."
+              class="w-full pl-9 pr-3 py-2.5 bg-slate-100 border border-transparent focus:bg-white focus:border-indigo-300 rounded-xl text-[15px] outline-none focus:ring-2 focus:ring-indigo-500/30 transition">
+          </div>
+          <button onclick="exportToCSV()" aria-label="Export riwayat ke CSV"
+            class="bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 rounded-xl text-[13px] font-bold flex items-center gap-1.5 active:scale-95 transition shrink-0">
+            <i class="fa-solid fa-file-arrow-down"></i><span class="hidden sm:inline">Export</span>
           </button>
         </div>
       </div>
-    </div>
 
-    <!-- VIEW 2: LIST DATA PROYEK -->
-    <div id="view-list" class="hidden absolute inset-0 p-3 overflow-y-auto bg-slate-50 pb-20 z-10">
-      <div class="mb-3 flex gap-2">
-        <div class="relative flex-1">
-          <i class="fa-solid fa-search absolute left-3 top-2.5 text-slate-400 text-xs"></i>
-          <input type="text" id="search-input" onkeyup="renderProyekList()" placeholder="Cari toko / kelurahan..."
-            class="w-full pl-8 pr-3 py-2 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500">
-        </div>
-        <button onclick="exportToCSV()"
-          class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-lg text-xs font-bold shadow-sm flex items-center gap-1.5 active:scale-95 transition-all">
-          <i class="fa-solid fa-file-excel"></i> Export
-        </button>
+      <div class="flex-1 min-h-0 overflow-y-auto p-3 sm:p-4">
+        <div id="proyek-container" class="mx-auto w-full max-w-3xl space-y-3"></div>
       </div>
-      <div id="proyek-container" class="space-y-3"></div>
-    </div>
+    </section>
   </main>
 
-  <!-- Modal Form Absensi -->
+  <!-- ================= TAB BAWAH (HP) ================= -->
+  <nav class="lg:hidden shrink-0 bg-white border-t border-slate-200 z-30 shadow-[0_-4px_16px_-8px_rgb(15_23_42/.2)]"
+    style="padding-bottom: var(--aman-bawah)">
+    <div class="mx-auto max-w-md grid grid-cols-2">
+      <button onclick="switchTab('map-view')" id="tab-map"
+        class="py-2.5 flex flex-col items-center gap-0.5 text-[11px] font-semibold transition">
+        <i class="fa-solid fa-map-location-dot text-[17px]"></i> Peta Absen
+      </button>
+      <button onclick="switchTab('list-view')" id="tab-list"
+        class="py-2.5 flex flex-col items-center gap-0.5 text-[11px] font-semibold transition">
+        <span class="relative">
+          <i class="fa-solid fa-clock-rotate-left text-[17px]"></i>
+          <span id="count-proyek"
+            class="absolute -top-1.5 -right-3 min-w-[16px] h-4 px-1 rounded-full bg-slate-200 text-slate-700 text-[10px] font-bold grid place-items-center">0</span>
+        </span>
+        Riwayat
+      </button>
+    </div>
+  </nav>
+
+  <!-- ================= FORM ABSENSI ================= -->
   <div id="modal-absen"
-    class="fixed inset-0 bg-black/60 backdrop-blur-sm z-[2000] hidden flex items-end justify-center transition-opacity">
-    <div class="bg-white w-full max-h-[90vh] rounded-t-2xl flex flex-col shadow-2xl overflow-hidden">
-      <div class="px-4 py-3 bg-indigo-800 text-white flex justify-between items-center shrink-0">
-        <h3 class="font-bold text-sm"><i class="fa-solid fa-clipboard-check mr-1.5"></i> Form Kunjungan Toko</h3>
-        <button onclick="closeAbsenModal()" class="text-indigo-200 hover:text-white p-1"><i
-            class="fa-solid fa-xmark text-lg"></i></button>
+    class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[2000] hidden items-end sm:items-center justify-center sm:p-4">
+    <div class="bg-white w-full sm:max-w-lg max-h-[92dvh] sm:max-h-[88dvh] rounded-t-3xl sm:rounded-2xl flex flex-col shadow-2xl overflow-hidden naik">
+
+      <div class="shrink-0 sm:hidden pt-2.5 pb-1 grid place-items-center">
+        <span class="w-10 h-1 rounded-full bg-slate-300"></span>
       </div>
 
-      <div class="p-4 overflow-y-auto flex-1 space-y-4">
-        <div class="space-y-4">
-          <!-- Foto -->
-          <div>
-            <label class="block font-bold text-slate-700 text-xs mb-1.5">1. Foto Toko / Lokasi <span
-                class="text-red-500">*</span></label>
-            <div class="grid grid-cols-2 gap-2 mb-2">
-              <label for="camera-env-input"
-                class="bg-indigo-600 text-white p-2.5 rounded-lg font-semibold text-xs flex justify-center items-center gap-1.5 shadow-sm active:scale-95 cursor-pointer">
-                <i class="fa-solid fa-camera"></i> Kamera
-              </label>
-              <label for="gallery-file-input"
-                class="bg-slate-100 text-slate-600 border border-slate-300 p-2.5 rounded-lg font-semibold text-xs flex justify-center items-center gap-1.5 active:scale-95 cursor-pointer">
-                <i class="fa-solid fa-image"></i> Galeri
-              </label>
-              <input type="file" id="camera-env-input" accept="image/*" capture="environment" class="hidden"
-                onchange="previewImage(event)">
-              <input type="file" id="gallery-file-input" accept="image/*" class="hidden" onchange="previewImage(event)">
-            </div>
-            <div id="preview-placeholder"
-              class="border-2 border-dashed border-slate-300 rounded-lg p-3 text-center bg-slate-50">
-              <i class="fa-solid fa-camera-retro text-2xl text-slate-300 mb-1"></i>
-              <p class="text-[10px] text-slate-500">Foto otomatis diberi stempel GPS.</p>
-            </div>
-            <div id="preview-container" class="hidden relative">
-              <img id="img-preview" class="w-full h-32 object-cover rounded-lg border border-slate-200 shadow-sm">
-            </div>
+      <div class="px-4 sm:px-5 py-3 flex justify-between items-center border-b border-slate-200 shrink-0">
+        <div>
+          <h3 class="font-bold text-slate-900 text-[15px]">Form Kunjungan Toko</h3>
+          <p class="text-[11px] text-slate-500">Foto otomatis distempel GPS &amp; jam</p>
+        </div>
+        <button onclick="closeAbsenModal()" aria-label="Tutup form"
+          class="w-9 h-9 rounded-full grid place-items-center text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+
+      <div class="px-4 sm:px-5 py-4 overflow-y-auto flex-1 space-y-5">
+
+        <!-- 1. Foto -->
+        <div>
+          <label class="flex items-center gap-1.5 font-bold text-slate-800 text-[13px] mb-2">
+            <span class="w-5 h-5 rounded-full bg-indigo-100 text-indigo-700 text-[10px] grid place-items-center font-bold">1</span>
+            Foto Toko <span class="text-red-500">*</span>
+          </label>
+
+          <div class="grid grid-cols-2 gap-2 mb-2.5">
+            <label for="camera-env-input"
+              class="bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-xl font-semibold text-[13px] flex justify-center items-center gap-2 active:scale-[.98] transition cursor-pointer">
+              <i class="fa-solid fa-camera"></i> Kamera
+            </label>
+            <label for="gallery-file-input"
+              class="bg-white text-slate-700 ring-1 ring-slate-300 hover:bg-slate-50 py-3 rounded-xl font-semibold text-[13px] flex justify-center items-center gap-2 active:scale-[.98] transition cursor-pointer">
+              <i class="fa-regular fa-image"></i> Galeri
+            </label>
+            <input type="file" id="camera-env-input" accept="image/*" capture="environment" class="hidden" onchange="previewImage(event)">
+            <input type="file" id="gallery-file-input" accept="image/*" class="hidden" onchange="previewImage(event)">
           </div>
 
-          <!-- Nama Toko -->
-          <div>
-            <label class="block font-bold text-slate-700 text-xs mb-1.5">2. Nama Toko / Klien <span
-                class="text-red-500">*</span></label>
-            <input type="text" id="input-nama-proyek" placeholder="Contoh: TB. Makmur Jaya"
-              class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500">
+          <div id="preview-placeholder"
+            class="border-2 border-dashed border-slate-300 rounded-xl py-6 text-center bg-slate-50">
+            <i class="fa-solid fa-camera-retro text-3xl text-slate-300"></i>
+            <p class="text-[11px] text-slate-500 mt-1.5">Belum ada foto</p>
+          </div>
+
+          <div id="preview-container" class="hidden relative">
+            <img id="img-preview" alt="Pratinjau foto toko"
+              class="w-full aspect-[4/3] object-cover rounded-xl ring-1 ring-slate-200">
+            <span class="absolute top-2 left-2 bg-emerald-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow">
+              <i class="fa-solid fa-check"></i> Sudah distempel
+            </span>
           </div>
         </div>
 
-        <div class="border-t border-slate-200 pt-2">
-          <button type="button" onclick="toggleOptionalDetails()"
-            class="w-full py-2 text-indigo-600 text-xs font-bold flex items-center justify-center gap-1.5 bg-indigo-50 rounded-lg">
-            <i id="toggle-icon" class="fa-solid fa-chevron-down"></i> Buka Catatan Pesanan (Opsional)
-          </button>
+        <!-- 2. Nama toko -->
+        <div>
+          <label for="input-nama-proyek" class="flex items-center gap-1.5 font-bold text-slate-800 text-[13px] mb-2">
+            <span class="w-5 h-5 rounded-full bg-indigo-100 text-indigo-700 text-[10px] grid place-items-center font-bold">2</span>
+            Nama Toko / Klien <span class="text-red-500">*</span>
+          </label>
+          <input type="text" id="input-nama-proyek" placeholder="Contoh: TB. Makmur Jaya"
+            class="w-full px-3.5 py-3 bg-slate-50 border border-slate-300 rounded-xl text-[15px] outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 transition">
         </div>
 
-        <div id="optional-details" class="hidden space-y-4 pb-4">
-          <!-- Rating -->
+        <!-- Tambahan -->
+        <button type="button" onclick="toggleOptionalDetails()"
+          class="w-full py-2.5 text-indigo-700 text-[13px] font-bold flex items-center justify-center gap-2 bg-indigo-50 hover:bg-indigo-100 rounded-xl transition">
+          <i id="toggle-icon" class="fa-solid fa-chevron-down text-[11px]"></i> Catatan Pesanan &amp; Rating (opsional)
+        </button>
+
+        <div id="optional-details" class="hidden space-y-4">
           <div>
-            <label class="block font-bold text-slate-600 text-[10px] mb-1">Rating Potensi Toko</label>
-            <div class="flex gap-1 text-lg text-amber-400" id="rating-stars">
-              <i class="fa-solid fa-star" onclick="setRating(1)"></i>
-              <i class="fa-solid fa-star" onclick="setRating(2)"></i>
-              <i class="fa-solid fa-star" onclick="setRating(3)"></i>
-              <i class="fa-solid fa-star" onclick="setRating(4)"></i>
-              <i class="fa-regular fa-star text-slate-300" onclick="setRating(5)"></i>
+            <label class="block font-bold text-slate-700 text-[12px] mb-1.5">Rating Potensi Toko</label>
+            <div class="flex gap-1 text-2xl text-amber-400" id="rating-stars">
+              <i class="fa-solid fa-star cursor-pointer p-1 active:scale-90 transition" onclick="setRating(1)"></i>
+              <i class="fa-solid fa-star cursor-pointer p-1 active:scale-90 transition" onclick="setRating(2)"></i>
+              <i class="fa-solid fa-star cursor-pointer p-1 active:scale-90 transition" onclick="setRating(3)"></i>
+              <i class="fa-solid fa-star cursor-pointer p-1 active:scale-90 transition" onclick="setRating(4)"></i>
+              <i class="fa-regular fa-star text-slate-300 cursor-pointer p-1 active:scale-90 transition" onclick="setRating(5)"></i>
             </div>
           </div>
 
-          <!-- Catatan / Keranjang Besar -->
-          <div class="bg-indigo-50 p-2.5 rounded-xl border border-indigo-100">
-            <label class="font-bold text-indigo-800 text-xs flex items-center gap-1.5 mb-1.5">
-              <i class="fa-solid fa-clipboard-list"></i> Catatan Pesanan / Follow Up
+          <div>
+            <label for="input-deskripsi" class="font-bold text-slate-700 text-[12px] flex items-center gap-1.5 mb-1.5">
+              <i class="fa-solid fa-clipboard-list text-indigo-600"></i> Catatan Pesanan / Follow Up
             </label>
             <textarea id="input-deskripsi" rows="4"
-              placeholder="Ketik daftar barang pesanan (cth: Keramik 60x60 = 5 Dus) atau hasil obrolan..."
-              class="w-full px-2.5 py-2 border border-indigo-200 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500 outline-none resize-none"></textarea>
+              placeholder="Cth: Keramik 60x60 = 5 dus, minta penawaran semen..."
+              class="w-full px-3.5 py-3 bg-slate-50 border border-slate-300 rounded-xl text-[15px] outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 resize-none transition"></textarea>
           </div>
 
-          <!-- Edit GPS Manual -->
-          <div class="bg-amber-50 p-2 rounded-xl border border-amber-200 text-xs">
-            <p class="font-bold text-amber-800 text-[10px] mb-1.5"><i class="fa-solid fa-pen-to-square"></i> Koreksi
-              Alamat (Jika Meleset)</p>
-            <input type="text" id="input-kelurahan" onchange="syncManualAddressInputs()"
-              class="w-full mb-1 border-amber-200 rounded px-2 py-1.5 text-xs" placeholder="Kelurahan">
-            <textarea id="input-alamat" rows="1" onchange="syncManualAddressInputs()"
-              class="w-full border-amber-200 rounded px-2 py-1.5 resize-none text-xs"
-              placeholder="Alamat Lengkap"></textarea>
+          <div class="bg-amber-50 ring-1 ring-amber-200 p-3 rounded-xl">
+            <p class="font-bold text-amber-900 text-[12px] mb-2 flex items-center gap-1.5">
+              <i class="fa-solid fa-pen-to-square"></i> Koreksi Alamat (jika meleset)
+            </p>
+            <input type="text" id="input-kelurahan" onchange="syncManualAddressInputs()" placeholder="Kelurahan"
+              class="w-full mb-2 bg-white border border-amber-200 rounded-lg px-3 py-2.5 text-[15px] outline-none focus:ring-2 focus:ring-amber-400/40">
+            <textarea id="input-alamat" rows="2" onchange="syncManualAddressInputs()" placeholder="Alamat lengkap"
+              class="w-full bg-white border border-amber-200 rounded-lg px-3 py-2.5 text-[15px] outline-none focus:ring-2 focus:ring-amber-400/40 resize-none"></textarea>
           </div>
         </div>
       </div>
 
-      <div class="p-3 bg-white border-t border-slate-200 flex gap-2 shrink-0">
+      <div class="px-4 sm:px-5 py-3 bg-white border-t border-slate-200 flex gap-2.5 shrink-0"
+        style="padding-bottom: calc(0.75rem + var(--aman-bawah))">
         <button onclick="closeAbsenModal()"
-          class="w-1/3 py-2.5 bg-slate-100 text-slate-600 rounded-lg font-bold text-xs">Batal</button>
+          class="w-1/3 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-[14px] transition">Batal</button>
         <button id="btn-simpan" onclick="simpanAbsensi()"
-          class="w-2/3 py-2.5 bg-indigo-600 text-white rounded-lg font-bold text-xs shadow-md flex justify-center items-center gap-1.5">
-          <i class="fa-solid fa-paper-plane"></i> Simpan Data
+          class="w-2/3 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-[14px] shadow-lg shadow-indigo-600/25 flex justify-center items-center gap-2 active:scale-[.98] transition">
+          <i class="fa-solid fa-paper-plane"></i> Simpan Kunjungan
         </button>
       </div>
     </div>
   </div>
+
+  <!-- ================= PEMBERITAHUAN ================= -->
+  <div id="wadah-pesan" class="fixed left-1/2 -translate-x-1/2 z-[3000] w-[calc(100%-1.5rem)] max-w-sm space-y-2 pointer-events-none"
+    style="top: calc(env(safe-area-inset-top, 0px) + 0.75rem)"></div>
 
   <canvas id="watermark-canvas" class="hidden"></canvas>
 
@@ -257,6 +337,8 @@
     let currentRating = 4;
     let currentImageBase64 = '', currentThumbBase64 = '', rawUnstampedImage = null;
     let sedangMengirim = false;
+    let tabAktif = 'map-view';
+
     // Safari mode penyamaran melempar galat saat menyentuh localStorage, yang bisa
     // mematikan seluruh halaman kalau tidak dijaga.
     const simpanan = {
@@ -299,15 +381,32 @@
       return isNaN(d) ? '-' : d.toLocaleString('id-ID', { dateStyle: 'short', timeStyle: 'short' });
     };
 
+    // Pemberitahuan singkat menggantikan alert(): alert menghentikan seluruh
+    // halaman dan di HP menutupi peta sampai ditekan.
+    function pesan(teks, jenis = 'info') {
+      const gaya = {
+        sukses: 'bg-emerald-600', galat: 'bg-red-600', info: 'bg-slate-800', ingat: 'bg-amber-500'
+      }[jenis] || 'bg-slate-800';
+      const ikon = { sukses: 'fa-circle-check', galat: 'fa-circle-exclamation', info: 'fa-circle-info', ingat: 'fa-triangle-exclamation' }[jenis] || 'fa-circle-info';
+
+      const el = document.createElement('div');
+      el.className = `${gaya} text-white text-[13px] font-medium px-3.5 py-2.5 rounded-xl shadow-xl flex items-start gap-2 redup-masuk`;
+      el.innerHTML = `<i class="fa-solid ${ikon} mt-0.5 shrink-0"></i><span>${esc(teks)}</span>`;
+      document.getElementById('wadah-pesan').appendChild(el);
+      setTimeout(() => { el.style.transition = 'opacity .3s'; el.style.opacity = '0'; setTimeout(() => el.remove(), 320); }, 3200);
+    }
+
     window.onload = function () {
       document.getElementById('display-sales-name').innerText = salesName;
       initMap();
+      terapkanTataLetak();
       renderProyekList();
       updateProyekCount();
       perbaruiBadge();
       sinkronkan();
       window.addEventListener('online', sinkronkan);
       window.addEventListener('offline', perbaruiBadge);
+      window.addEventListener('resize', terapkanTataLetak);
       setInterval(sinkronkan, 30000);
     };
 
@@ -324,11 +423,12 @@
     function initMap() {
       map = L.map('map', { zoomControl: false }).setView([selectedLat, selectedLng], 15);
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
+      L.control.zoom({ position: 'topright' }).addTo(map);
 
       const customIcon = L.divIcon({
         className: 'custom-div-icon',
-        html: `<div class="bg-indigo-600 text-white w-8 h-8 rounded-full flex items-center justify-center shadow-lg border-2 border-white transform -translate-x-1/2 -translate-y-1/2"><i class="fa-solid fa-location-dot text-sm"></i></div>`,
-        iconSize: [32, 32], iconAnchor: [16, 16]
+        html: `<div class="bg-indigo-600 text-white w-9 h-9 rounded-full flex items-center justify-center shadow-lg border-[3px] border-white transform -translate-x-1/2 -translate-y-1/2"><i class="fa-solid fa-location-dot text-sm"></i></div>`,
+        iconSize: [36, 36], iconAnchor: [18, 18]
       });
 
       activeMarker = L.marker([selectedLat, selectedLng], { draggable: true, icon: customIcon }).addTo(map);
@@ -339,23 +439,38 @@
     }
 
     function getCurrentLocation() {
-      document.getElementById('gps-accuracy-badge').innerText = "Mencari...";
+      const badge = document.getElementById('gps-accuracy-badge');
+      const ikon = document.getElementById('ikon-gps');
+      badge.innerText = "Mencari sinyal GPS...";
+      badge.className = "text-[11px] font-bold text-slate-600 bg-slate-100 ring-1 ring-slate-200 px-2 py-0.5 rounded-full denyut";
+      ikon.className = "fa-solid fa-spinner fa-spin";
+
+      const selesai = () => { ikon.className = "fa-solid fa-crosshairs"; };
+
       if (!navigator.geolocation) {
-        document.getElementById('gps-accuracy-badge').innerText = "GPS tidak tersedia";
-        return;
+        badge.innerText = "GPS tidak tersedia";
+        badge.className = "text-[11px] font-bold text-red-700 bg-red-50 ring-1 ring-red-200 px-2 py-0.5 rounded-full";
+        return selesai();
       }
+
       navigator.geolocation.getCurrentPosition(
         (position) => {
           const lat = position.coords.latitude, lng = position.coords.longitude;
           // Bacaan asli perangkat disimpan terpisah dari pin yang bisa digeser
           // manual, supaya pemilik bisa melihat kalau keduanya berjauhan.
           gpsLat = lat; gpsLng = lng; gpsAkurasi = position.coords.accuracy;
-          document.getElementById('gps-accuracy-badge').innerText = `Akurasi: ±${Math.round(position.coords.accuracy)}m`;
+          badge.innerText = `Akurasi ±${Math.round(position.coords.accuracy)} m`;
+          badge.className = "text-[11px] font-bold text-indigo-700 bg-indigo-50 ring-1 ring-indigo-100 px-2 py-0.5 rounded-full";
           map.setView([lat, lng], 17);
           activeMarker.setLatLng([lat, lng]);
           updateLocationInfo(lat, lng);
+          selesai();
         },
-        () => { document.getElementById('gps-accuracy-badge').innerText = "GPS Error"; },
+        () => {
+          badge.innerText = "GPS gagal — nyalakan lokasi";
+          badge.className = "text-[11px] font-bold text-red-700 bg-red-50 ring-1 ring-red-200 px-2 py-0.5 rounded-full";
+          selesai();
+        },
         { enableHighAccuracy: true, timeout: 10000 }
       );
     }
@@ -377,28 +492,40 @@
       document.getElementById('live-address-detail').innerText = addressInfo.alamatLengkap;
     }
 
-    // TABS NAV
+    // TATA LETAK & TAB
+    const layarLebar = () => window.matchMedia('(min-width: 1024px)').matches;
+
     function switchTab(tabName) {
+      tabAktif = tabName;
+      terapkanTataLetak();
+      if (tabName === 'list-view') renderProyekList();
+    }
+
+    // Di layar lebar kedua panel tampil bersamaan, jadi tab tidak menyembunyikan
+    // apa pun. Di HP hanya satu yang tampil: panel "Absen Disini" melayang di
+    // lapisan atas dan akan menutupi daftar riwayat kalau peta dibiarkan hidup.
+    function terapkanTataLetak() {
       const viewMap = document.getElementById('view-map');
       const viewList = document.getElementById('view-list');
-      const tabMap = document.getElementById('tab-map');
-      const tabList = document.getElementById('tab-list');
-      const aktif = "py-3 w-1/2 text-indigo-600 border-b-2 border-indigo-600 flex justify-center items-center gap-1.5";
-      const pasif = "py-3 w-1/2 text-slate-500 flex justify-center items-center gap-1.5";
+      const lebar = layarLebar();
 
-      if (tabName === 'map-view') {
-        viewList.classList.add('hidden');
+      if (lebar) {
         viewMap.classList.remove('hidden');
-        tabMap.className = aktif; tabList.className = pasif;
-        setTimeout(() => map.invalidateSize(), 200);
-      } else {
-        // Peta ikut disembunyikan: panel "Absen Disini" melayang di lapisan atas
-        // dan akan menutupi daftar riwayat kalau dibiarkan.
+        viewList.classList.remove('hidden');
+      } else if (tabAktif === 'list-view') {
         viewMap.classList.add('hidden');
         viewList.classList.remove('hidden');
-        tabList.className = aktif; tabMap.className = pasif;
-        renderProyekList();
+      } else {
+        viewList.classList.add('hidden');
+        viewMap.classList.remove('hidden');
       }
+
+      const aktif = 'py-2.5 flex flex-col items-center gap-0.5 text-[11px] font-semibold transition text-indigo-700 bg-indigo-50';
+      const pasif = 'py-2.5 flex flex-col items-center gap-0.5 text-[11px] font-semibold transition text-slate-400';
+      document.getElementById('tab-map').className = tabAktif === 'map-view' ? aktif : pasif;
+      document.getElementById('tab-list').className = tabAktif === 'list-view' ? aktif : pasif;
+
+      if (map) setTimeout(() => map.invalidateSize(), 150);
     }
 
     // MODAL
@@ -413,19 +540,20 @@
       document.getElementById('input-deskripsi').value = '';
 
       document.getElementById('optional-details').classList.add('hidden');
-      document.getElementById('toggle-icon').className = "fa-solid fa-chevron-down";
+      document.getElementById('toggle-icon').className = "fa-solid fa-chevron-down text-[11px]";
       setRating(4);
-      document.getElementById('modal-absen').classList.remove('hidden');
+      document.getElementById('modal-absen').classList.replace('hidden', 'flex');
     }
-    function closeAbsenModal() { document.getElementById('modal-absen').classList.add('hidden'); }
+    function closeAbsenModal() { document.getElementById('modal-absen').classList.replace('flex', 'hidden'); }
+
     function toggleOptionalDetails() {
       const detailSection = document.getElementById('optional-details');
       const icon = document.getElementById('toggle-icon');
       if (detailSection.classList.contains('hidden')) {
-        detailSection.classList.remove('hidden'); icon.className = "fa-solid fa-chevron-up";
-        setTimeout(() => detailSection.scrollIntoView({ behavior: 'smooth' }), 100);
+        detailSection.classList.remove('hidden'); icon.className = "fa-solid fa-chevron-up text-[11px]";
+        setTimeout(() => detailSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 100);
       } else {
-        detailSection.classList.add('hidden'); icon.className = "fa-solid fa-chevron-down";
+        detailSection.classList.add('hidden'); icon.className = "fa-solid fa-chevron-down text-[11px]";
       }
     }
 
@@ -437,7 +565,7 @@
       reader.onload = function (e) {
         const img = new Image();
         img.onload = function () { rawUnstampedImage = img; processWatermarkOnCanvas(img); };
-        img.onerror = function () { alert("Foto tidak bisa dibaca, coba ambil ulang."); };
+        img.onerror = function () { pesan("Foto tidak bisa dibaca, coba ambil ulang.", 'galat'); };
         img.src = e.target.result;
       };
       reader.readAsDataURL(file);
@@ -475,6 +603,7 @@
       document.getElementById('preview-container').classList.remove('hidden');
       document.getElementById('preview-placeholder').classList.add('hidden');
     }
+
     // Sisipan dibuat dari kanvas yang sudah berstempel, jadi keterangan lokasi
     // tetap terbaca walau kecil.
     function buatSisipan(sumber) {
@@ -487,18 +616,23 @@
     }
 
     function syncManualAddressInputs() { if (rawUnstampedImage) processWatermarkOnCanvas(rawUnstampedImage); }
+
     function setRating(stars) {
       currentRating = stars;
       document.getElementById('rating-stars').querySelectorAll('i').forEach((el, i) => {
-        el.className = i < stars ? "fa-solid fa-star" : "fa-regular fa-star text-slate-300";
+        el.className = (i < stars ? "fa-solid fa-star" : "fa-regular fa-star text-slate-300")
+          + " cursor-pointer p-1 active:scale-90 transition";
       });
     }
 
     // SIMPAN
     function simpanAbsensi() {
       const nama = document.getElementById('input-nama-proyek').value.trim();
-      if (!currentImageBase64) return alert("Foto toko wajib diisi!");
-      if (!nama) return alert("Nama Toko wajib diisi!");
+      if (!currentImageBase64) return pesan("Foto toko wajib diisi.", 'ingat');
+      if (!nama) {
+        document.getElementById('input-nama-proyek').focus();
+        return pesan("Nama toko wajib diisi.", 'ingat');
+      }
 
       const kunjungan = {
         id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -519,16 +653,20 @@
       riwayat.unshift(kunjungan);
       if (!simpanRiwayat()) {
         riwayat.shift();
-        return alert("Memori HP penuh. Sambungkan internet dulu agar data yang tertunda terkirim, lalu coba lagi.");
+        return pesan("Memori HP penuh. Sambungkan internet dulu agar data tertunda terkirim.", 'galat');
       }
 
       closeAbsenModal();
       updateProyekCount();
       switchTab('list-view');
+      pesan(`Kunjungan "${nama}" tersimpan.`, 'sukses');
       sinkronkan();
     }
 
-    function updateProyekCount() { document.getElementById('count-proyek').innerText = riwayat.length; }
+    function updateProyekCount() {
+      document.getElementById('count-proyek').innerText = riwayat.length;
+      document.getElementById('count-proyek-lg').innerText = riwayat.length;
+    }
 
     // SINKRONISASI KE SERVER
     async function sinkronkan() {
@@ -570,28 +708,36 @@
     }
 
     function sinkronkanSekarang() {
-      if (!navigator.onLine) return alert("Belum ada koneksi internet. Data aman tersimpan di HP dan akan terkirim otomatis.");
+      if (!navigator.onLine) return pesan("Belum ada internet. Data aman di HP dan terkirim otomatis nanti.", 'ingat');
+      const tertunda = riwayat.filter(i => i.status === 'pending').length;
+      if (!tertunda) return pesan("Semua kunjungan sudah masuk pusat data.", 'sukses');
+      pesan(`Mengirim ${tertunda} kunjungan...`, 'info');
       sinkronkan();
     }
 
     function perbaruiBadge() {
       const badge = document.getElementById('sync-badge');
+      const dot = document.getElementById('sync-dot');
       const teks = document.getElementById('sync-text');
       const tertunda = riwayat.filter(i => i.status === 'pending').length;
       const gagal = riwayat.filter(i => i.status === 'gagal').length;
-      const dasar = "text-[9px] px-2 py-1 rounded-full text-white font-medium flex items-center gap-1 shadow active:scale-95 ";
+      const dasar = "shrink-0 text-[11px] font-semibold px-2.5 sm:px-3 py-1.5 rounded-full text-white flex items-center gap-1.5 shadow-sm ring-1 ring-white/20 active:scale-95 transition ";
+
+      dot.className = "w-1.5 h-1.5 rounded-full bg-white";
 
       if (!navigator.onLine) {
         badge.className = dasar + "bg-slate-500";
-        teks.innerText = tertunda ? `Offline · ${tertunda} antre` : 'Offline';
+        teks.innerText = tertunda ? `Offline · ${tertunda}` : 'Offline';
       } else if (sedangMengirim) {
         badge.className = dasar + "bg-sky-500";
+        dot.className = "w-1.5 h-1.5 rounded-full bg-white denyut";
         teks.innerText = 'Mengirim...';
       } else if (gagal) {
         badge.className = dasar + "bg-red-500";
         teks.innerText = `${gagal} gagal`;
       } else if (tertunda) {
         badge.className = dasar + "bg-amber-500";
+        dot.className = "w-1.5 h-1.5 rounded-full bg-white denyut";
         teks.innerText = `${tertunda} belum terkirim`;
       } else {
         badge.className = dasar + "bg-emerald-500";
@@ -608,40 +754,64 @@
       );
 
       if (hasil.length === 0) {
-        container.innerHTML = `<p class="text-center text-slate-400 text-xs py-10">Belum ada riwayat kunjungan.</p>`;
+        container.innerHTML = `
+          <div class="text-center py-16 px-6">
+            <div class="w-16 h-16 rounded-2xl bg-slate-200 text-slate-400 grid place-items-center mx-auto mb-3 text-2xl">
+              <i class="fa-solid fa-store"></i>
+            </div>
+            <p class="font-semibold text-slate-600 text-sm">${riwayat.length ? 'Tidak ada yang cocok' : 'Belum ada kunjungan'}</p>
+            <p class="text-[12px] text-slate-400 mt-1">${riwayat.length ? 'Coba kata kunci lain.' : 'Tekan "Absen Disini" saat sampai di toko.'}</p>
+          </div>`;
         return;
       }
 
       const lencana = {
-        pending: `<span class="text-[9px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-bold">Belum terkirim</span>`,
-        synced: `<span class="text-[9px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded font-bold">Terkirim</span>`,
-        gagal: `<span class="text-[9px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded font-bold">Gagal</span>`
+        pending: `<span class="text-[10px] bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full font-bold"><i class="fa-solid fa-clock"></i> Belum terkirim</span>`,
+        synced: `<span class="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-bold"><i class="fa-solid fa-check"></i> Terkirim</span>`,
+        gagal: `<span class="text-[10px] bg-red-100 text-red-800 px-2 py-0.5 rounded-full font-bold"><i class="fa-solid fa-xmark"></i> Gagal</span>`
       };
 
       container.innerHTML = hasil.map((item) => `
-        <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden mb-3">
-          <div class="flex">
-            <img src="${esc(item.thumb || item.foto || '')}" loading="lazy" class="w-28 h-36 object-cover bg-slate-100">
-            <div class="p-2.5 flex-1 flex flex-col justify-between min-w-0">
-              <div>
-                <div class="flex justify-between items-start">
-                  <h4 class="font-bold text-slate-800 text-sm truncate mr-1">${esc(item.nama)}</h4>
-                  <span class="text-[10px] text-amber-500 font-bold whitespace-nowrap">⭐ ${esc(item.rating)}</span>
-                </div>
-                <div class="flex items-center gap-1.5 mb-1">${lencana[item.status] || ''}</div>
-                <p class="text-[10px] text-slate-500 truncate mb-1"><i class="fa-solid fa-map-pin text-indigo-500"></i> ${esc(item.kelurahan)}</p>
-                ${item.deskripsi ? `<div class="text-[10px] text-slate-600 bg-slate-50 p-1.5 rounded border border-slate-100 line-clamp-2">📝 ${esc(item.deskripsi)}</div>` : ''}
-              </div>
-              <div class="flex justify-between items-end mt-2 pt-2 border-t border-slate-100">
-                <span class="text-[9px] font-mono text-slate-400">${esc(waktuSingkat(item.waktu))}</span>
-                <div class="flex gap-3">
-                  <button onclick="shareKeWhatsApp('${esc(item.id)}')" class="text-emerald-600 bg-emerald-50 px-2 py-1 rounded text-xs font-bold flex items-center gap-1 active:scale-95 border border-emerald-100"><i class="fa-brands fa-whatsapp text-sm"></i> Kirim</button>
-                  <button onclick="hapusProyek('${esc(item.id)}')" class="text-red-400 text-xs active:scale-95 px-1"><i class="fa-solid fa-trash"></i></button>
-                </div>
+        <article class="bg-white rounded-2xl ring-1 ring-slate-200 kartu-lembut overflow-hidden flex">
+          <img src="${esc(item.thumb || item.foto || '')}" alt="" loading="lazy"
+            class="w-24 sm:w-28 object-cover bg-slate-100 shrink-0">
+          <div class="p-3 flex-1 flex flex-col min-w-0">
+            <div class="flex justify-between items-start gap-2">
+              <h4 class="font-bold text-slate-900 text-[14px] leading-tight truncate">${esc(item.nama)}</h4>
+              <span class="text-[11px] text-amber-500 font-bold whitespace-nowrap shrink-0">
+                <i class="fa-solid fa-star text-[10px]"></i> ${esc(item.rating ?? '-')}
+              </span>
+            </div>
+
+            <div class="mt-1.5">${lencana[item.status] || ''}</div>
+
+            <p class="text-[11px] text-slate-500 truncate mt-1.5">
+              <i class="fa-solid fa-location-dot text-indigo-500"></i> ${esc(item.kelurahan)}
+            </p>
+
+            ${item.deskripsi ? `
+              <div class="text-[11px] text-slate-600 bg-slate-50 ring-1 ring-slate-100 px-2 py-1.5 rounded-lg mt-1.5">
+                <p class="baris-2">${esc(item.deskripsi)}</p>
+              </div>` : ''}
+
+            ${item.status === 'gagal' && item.pesanGagal ? `
+              <p class="text-[10px] text-red-700 bg-red-50 ring-1 ring-red-100 px-2 py-1 rounded-lg mt-1.5">${esc(item.pesanGagal)}</p>` : ''}
+
+            <div class="flex justify-between items-center gap-2 mt-auto pt-2.5">
+              <span class="text-[10px] text-slate-400 truncate">${esc(waktuSingkat(item.waktu))}</span>
+              <div class="flex gap-1.5 shrink-0">
+                <button onclick="shareKeWhatsApp('${esc(item.id)}')"
+                  class="text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-2.5 py-1.5 rounded-lg text-[11px] font-bold flex items-center gap-1 active:scale-95 transition">
+                  <i class="fa-brands fa-whatsapp text-[13px]"></i> Kirim
+                </button>
+                <button onclick="hapusProyek('${esc(item.id)}')" aria-label="Hapus dari HP"
+                  class="w-8 h-8 grid place-items-center rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 text-[12px] active:scale-95 transition">
+                  <i class="fa-solid fa-trash"></i>
+                </button>
               </div>
             </div>
           </div>
-        </div>
+        </article>
       `).join('');
     }
 
@@ -669,21 +839,22 @@
       const data = riwayat.find(i => String(i.id) === String(id));
       if (!data) return;
 
-      const pesan = data.status === 'synced'
+      const teks = data.status === 'synced'
         ? "Hapus dari HP ini? Data yang sudah terkirim tetap tersimpan di pusat."
         : "Data ini BELUM terkirim ke pusat. Kalau dihapus, hilang selamanya. Lanjutkan?";
-      if (!confirm(pesan)) return;
+      if (!confirm(teks)) return;
 
       riwayat = riwayat.filter(i => String(i.id) !== String(id));
       simpanRiwayat();
       renderProyekList();
       updateProyekCount();
       perbaruiBadge();
+      pesan("Kunjungan dihapus dari HP ini.", 'info');
     }
 
     // EXPORT CSV
     function exportToCSV() {
-      if (riwayat.length === 0) return alert("Belum ada data untuk diexport!");
+      if (riwayat.length === 0) return pesan("Belum ada data untuk diexport.", 'ingat');
       const kolom = ["Waktu Kunjungan", "Nama Toko", "Kelurahan", "Alamat Lengkap", "Rating", "Latitude", "Longitude", "Catatan Pesanan", "Nama Sales", "Status"];
       const sel = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
 

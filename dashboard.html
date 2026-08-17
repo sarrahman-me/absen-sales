@@ -3,9 +3,9 @@
 
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Dashboard Pemilik - My Zona</title>
-  <meta name="theme-color" content="#3730a3">
+  <meta name="theme-color" content="#312e81">
 
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -13,125 +13,251 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
   <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
-    ::-webkit-scrollbar { width: 6px; height: 6px; }
-    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 99px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+
+    /* Bilah rentang tanggal digeser dengan jari di HP; batang gulirnya sendiri
+       hanya makan tempat. */
+    .tanpa-batang { scrollbar-width: none; }
+    .tanpa-batang::-webkit-scrollbar { display: none; }
+
+    .kartu { box-shadow: 0 1px 2px rgb(15 23 42 / .04), 0 8px 24px -14px rgb(15 23 42 / .2); }
+    .leaflet-container { font-family: inherit; }
+
+    .redup-masuk { animation: redup .2s ease-out; }
+    @keyframes redup { from { opacity: 0; transform: translateY(6px) } to { opacity: 1; transform: none } }
+
+    /* Rangka abu-abu selagi data dan foto dimuat, supaya tata letak tidak
+       melompat begitu isinya datang. */
+    .rangka { background: linear-gradient(90deg, #e2e8f0 25%, #f1f5f9 50%, #e2e8f0 75%); background-size: 200% 100%; animation: geser 1.4s linear infinite; }
+    @keyframes geser { from { background-position: 200% 0 } to { background-position: -200% 0 } }
+
+    /* Batas tiga baris. Dipasang pada elemen tanpa jarak dalam sendiri —
+       kalau elemen ber-padding, sisa baris berikutnya ikut terlihat. */
+    .baris-3 {
+      display: -webkit-box;
+      -webkit-line-clamp: 3;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
   </style>
 </head>
 
-<body class="bg-slate-100 min-h-screen">
+<body class="bg-slate-100 text-slate-900 min-h-screen">
 
-  <!-- GERBANG KATA SANDI -->
-  <div id="gerbang" class="fixed inset-0 bg-slate-900 z-[3000] flex items-center justify-center p-4">
-    <div class="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm">
-      <div class="text-center mb-5">
-        <div class="w-12 h-12 bg-indigo-100 text-indigo-700 rounded-xl flex items-center justify-center mx-auto mb-3 text-xl">
-          <i class="fa-solid fa-lock"></i>
+  <!-- ================= GERBANG KATA SANDI ================= -->
+  <div id="gerbang" class="fixed inset-0 bg-gradient-to-br from-indigo-950 via-slate-900 to-slate-950 z-[3000] flex items-center justify-center p-5">
+    <div class="w-full max-w-sm">
+      <div class="text-center mb-6">
+        <div class="w-14 h-14 bg-white/10 ring-1 ring-white/20 text-white rounded-2xl grid place-items-center mx-auto mb-4 text-xl">
+          <i class="fa-solid fa-chart-line"></i>
         </div>
-        <h1 class="font-bold text-slate-800">Dashboard Pemilik</h1>
-        <p class="text-xs text-slate-500 mt-1">Masukkan kata sandi untuk melihat laporan kunjungan.</p>
+        <h1 class="font-bold text-white text-lg">Dashboard Pemilik</h1>
+        <p class="text-[13px] text-slate-400 mt-1">Pantau kunjungan sales lapangan</p>
       </div>
-      <input type="password" id="input-sandi" placeholder="Kata sandi"
-        class="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm mb-2 focus:ring-2 focus:ring-indigo-500 outline-none"
-        onkeydown="if(event.key==='Enter') masuk()">
-      <p id="pesan-sandi" class="text-xs text-red-500 mb-2 hidden"></p>
-      <button onclick="masuk()" class="w-full py-2.5 bg-indigo-600 text-white rounded-lg font-bold text-sm active:scale-95">
-        Masuk
-      </button>
+
+      <div class="bg-white rounded-2xl shadow-2xl p-5">
+        <label for="input-sandi" class="block text-[12px] font-bold text-slate-600 mb-1.5">Kata sandi</label>
+        <div class="relative">
+          <input type="password" id="input-sandi" placeholder="••••••••" autocomplete="current-password"
+            class="w-full pl-3.5 pr-11 py-3 bg-slate-50 border border-slate-300 rounded-xl text-[15px] outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 transition"
+            onkeydown="if(event.key==='Enter') masuk()">
+          <button type="button" onclick="lihatSandi()" aria-label="Tampilkan kata sandi"
+            class="absolute right-1 top-1/2 -translate-y-1/2 w-9 h-9 grid place-items-center text-slate-400 hover:text-slate-700 rounded-lg transition">
+            <i id="ikon-mata" class="fa-regular fa-eye"></i>
+          </button>
+        </div>
+
+        <p id="pesan-sandi" class="text-[12px] text-red-600 bg-red-50 ring-1 ring-red-100 rounded-lg px-2.5 py-2 mt-2.5 hidden"></p>
+
+        <button onclick="masuk()" id="btn-masuk"
+          class="w-full mt-3 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-[15px] shadow-lg shadow-indigo-600/25 active:scale-[.98] transition flex items-center justify-center gap-2">
+          <span>Masuk</span>
+        </button>
+      </div>
+
+      <p class="text-center text-[11px] text-slate-500 mt-4">Halaman ini hanya untuk pemilik toko.</p>
     </div>
   </div>
 
-  <!-- HEADER -->
-  <header class="bg-indigo-800 text-white px-4 py-3 shadow-md flex justify-between items-center sticky top-0 z-[1500]">
-    <div class="flex items-center gap-2">
-      <div class="bg-white/20 p-1.5 rounded-lg"><i class="fa-solid fa-chart-line"></i></div>
-      <div>
-        <h1 class="font-bold text-sm leading-tight">Dashboard Pemilik</h1>
-        <p class="text-[10px] text-indigo-200">Pantau kunjungan sales lapangan</p>
+  <!-- ================= HEADER ================= -->
+  <header class="bg-gradient-to-r from-indigo-900 to-indigo-700 text-white shadow-lg sticky top-0 z-[1500]"
+    style="padding-top: env(safe-area-inset-top, 0px)">
+    <div class="mx-auto max-w-7xl px-3 sm:px-5 h-14 sm:h-16 flex justify-between items-center gap-3">
+      <div class="flex items-center gap-2.5 min-w-0">
+        <div class="bg-white/15 ring-1 ring-white/25 w-9 h-9 rounded-xl grid place-items-center shrink-0">
+          <i class="fa-solid fa-chart-line"></i>
+        </div>
+        <div class="min-w-0">
+          <h1 class="font-bold text-[15px] leading-tight truncate">Dashboard Pemilik</h1>
+          <p class="text-[11px] text-indigo-200 truncate">Pantau kunjungan sales lapangan</p>
+        </div>
       </div>
-    </div>
-    <div class="flex items-center gap-2">
-      <button onclick="muatData()" class="text-xs bg-white/15 px-3 py-1.5 rounded-lg font-semibold active:scale-95">
-        <i class="fa-solid fa-rotate"></i> Muat Ulang
-      </button>
-      <button onclick="keluar()" class="text-xs bg-white/15 px-3 py-1.5 rounded-lg font-semibold active:scale-95">
-        <i class="fa-solid fa-right-from-bracket"></i>
-      </button>
+
+      <div class="flex items-center gap-2 shrink-0">
+        <button onclick="muatData()" id="btn-muat"
+          class="text-[12px] bg-white/15 hover:bg-white/25 px-3 py-2 rounded-xl font-semibold active:scale-95 transition flex items-center gap-1.5">
+          <i id="ikon-muat" class="fa-solid fa-rotate"></i><span class="hidden sm:inline">Muat Ulang</span>
+        </button>
+        <button onclick="keluar()" aria-label="Keluar"
+          class="text-[12px] bg-white/15 hover:bg-white/25 w-9 h-9 rounded-xl font-semibold active:scale-95 transition grid place-items-center">
+          <i class="fa-solid fa-right-from-bracket"></i>
+        </button>
+      </div>
     </div>
   </header>
 
-  <main class="p-3 sm:p-4 max-w-6xl mx-auto space-y-4">
+  <main class="mx-auto max-w-7xl px-3 sm:px-5 py-4 space-y-4 pb-16">
 
-    <!-- RINGKASAN -->
-    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
-      <div class="bg-white rounded-xl border border-slate-200 p-3 shadow-sm">
-        <p class="text-[10px] text-slate-500 font-semibold uppercase tracking-wide">Kunjungan Hari Ini</p>
-        <p class="text-2xl font-bold text-indigo-700" id="stat-hari-ini">0</p>
+    <!-- ================= RINGKASAN ================= -->
+    <section class="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3">
+      <div class="bg-white rounded-2xl ring-1 ring-slate-200 kartu p-3.5 sm:p-4">
+        <div class="flex items-center gap-2 mb-1.5">
+          <span class="w-7 h-7 rounded-lg bg-indigo-50 text-indigo-600 grid place-items-center text-[12px]"><i class="fa-solid fa-calendar-day"></i></span>
+          <p class="text-[11px] text-slate-500 font-semibold leading-tight">Kunjungan<br class="sm:hidden"> Hari Ini</p>
+        </div>
+        <p class="text-3xl font-bold text-indigo-700 tabular-nums" id="stat-hari-ini">0</p>
       </div>
-      <div class="bg-white rounded-xl border border-slate-200 p-3 shadow-sm">
-        <p class="text-[10px] text-slate-500 font-semibold uppercase tracking-wide">Total Ditampilkan</p>
-        <p class="text-2xl font-bold text-slate-800" id="stat-total">0</p>
-      </div>
-      <div class="bg-white rounded-xl border border-slate-200 p-3 shadow-sm">
-        <p class="text-[10px] text-slate-500 font-semibold uppercase tracking-wide">Sales Aktif</p>
-        <p class="text-2xl font-bold text-slate-800" id="stat-sales">0</p>
-      </div>
-      <div class="bg-white rounded-xl border border-slate-200 p-3 shadow-sm">
-        <p class="text-[10px] text-slate-500 font-semibold uppercase tracking-wide">Perlu Dicek</p>
-        <p class="text-2xl font-bold text-amber-600" id="stat-curiga">0</p>
-      </div>
-    </div>
 
-    <!-- FILTER -->
-    <div class="bg-white rounded-xl border border-slate-200 p-3 shadow-sm">
-      <div class="grid grid-cols-2 lg:grid-cols-5 gap-2 items-end">
-        <div>
-          <label class="block text-[10px] font-bold text-slate-600 mb-1">Dari Tanggal</label>
-          <input type="date" id="filter-dari" class="w-full px-2 py-1.5 border border-slate-300 rounded-lg text-xs">
+      <div class="bg-white rounded-2xl ring-1 ring-slate-200 kartu p-3.5 sm:p-4">
+        <div class="flex items-center gap-2 mb-1.5">
+          <span class="w-7 h-7 rounded-lg bg-slate-100 text-slate-600 grid place-items-center text-[12px]"><i class="fa-solid fa-list-check"></i></span>
+          <p class="text-[11px] text-slate-500 font-semibold leading-tight">Total<br class="sm:hidden"> Ditampilkan</p>
         </div>
-        <div>
-          <label class="block text-[10px] font-bold text-slate-600 mb-1">Sampai Tanggal</label>
-          <input type="date" id="filter-sampai" class="w-full px-2 py-1.5 border border-slate-300 rounded-lg text-xs">
+        <p class="text-3xl font-bold text-slate-800 tabular-nums" id="stat-total">0</p>
+      </div>
+
+      <div class="bg-white rounded-2xl ring-1 ring-slate-200 kartu p-3.5 sm:p-4">
+        <div class="flex items-center gap-2 mb-1.5">
+          <span class="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-600 grid place-items-center text-[12px]"><i class="fa-solid fa-user-group"></i></span>
+          <p class="text-[11px] text-slate-500 font-semibold leading-tight">Sales<br class="sm:hidden"> Aktif</p>
         </div>
-        <div>
-          <label class="block text-[10px] font-bold text-slate-600 mb-1">Sales</label>
-          <select id="filter-sales" class="w-full px-2 py-1.5 border border-slate-300 rounded-lg text-xs">
-            <option value="">Semua Sales</option>
-          </select>
+        <p class="text-3xl font-bold text-slate-800 tabular-nums" id="stat-sales">0</p>
+      </div>
+
+      <button onclick="saringCuriga()" id="kartu-curiga"
+        class="bg-white rounded-2xl ring-1 ring-slate-200 kartu p-3.5 sm:p-4 text-left hover:ring-amber-300 transition">
+        <div class="flex items-center gap-2 mb-1.5">
+          <span class="w-7 h-7 rounded-lg bg-amber-50 text-amber-600 grid place-items-center text-[12px]"><i class="fa-solid fa-triangle-exclamation"></i></span>
+          <p class="text-[11px] text-slate-500 font-semibold leading-tight">Perlu<br class="sm:hidden"> Dicek</p>
         </div>
-        <div class="col-span-2 lg:col-span-1">
-          <label class="block text-[10px] font-bold text-slate-600 mb-1">Cari Toko</label>
-          <input type="text" id="filter-cari" onkeyup="render()" placeholder="Nama toko / kelurahan"
-            class="w-full px-2 py-1.5 border border-slate-300 rounded-lg text-xs">
+        <p class="text-3xl font-bold text-amber-600 tabular-nums" id="stat-curiga">0</p>
+      </button>
+    </section>
+
+    <!-- ================= FILTER ================= -->
+    <section class="bg-white rounded-2xl ring-1 ring-slate-200 kartu overflow-hidden">
+      <div class="px-3.5 sm:px-4 py-3 flex items-center justify-between gap-3 border-b border-slate-100">
+        <div class="flex gap-1.5 overflow-x-auto tanpa-batang -mx-1 px-1 py-0.5">
+          <button onclick="rentangCepat('hari')" data-rentang="hari" class="chip">Hari ini</button>
+          <button onclick="rentangCepat('7')" data-rentang="7" class="chip">7 hari</button>
+          <button onclick="rentangCepat('30')" data-rentang="30" class="chip">30 hari</button>
+          <button onclick="rentangCepat('semua')" data-rentang="semua" class="chip">Semua</button>
         </div>
-        <div class="col-span-2 lg:col-span-1 flex gap-2">
-          <button onclick="muatData()" class="flex-1 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-bold active:scale-95">
-            <i class="fa-solid fa-filter"></i> Terapkan
-          </button>
-          <button onclick="exportCSV()" class="flex-1 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-bold active:scale-95">
-            <i class="fa-solid fa-file-excel"></i> Export
-          </button>
+        <button onclick="bukaFilter()" id="btn-filter"
+          class="lg:hidden shrink-0 text-[12px] font-bold text-indigo-700 bg-indigo-50 px-3 py-1.5 rounded-lg flex items-center gap-1.5">
+          <i class="fa-solid fa-sliders"></i> Filter
+        </button>
+      </div>
+
+      <div id="panel-filter" class="hidden lg:block px-3.5 sm:px-4 py-3.5">
+        <div class="grid grid-cols-2 lg:grid-cols-5 gap-2.5 items-end">
+          <div>
+            <label for="filter-dari" class="block text-[11px] font-bold text-slate-600 mb-1">Dari Tanggal</label>
+            <input type="date" id="filter-dari" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-[14px] outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500/30">
+          </div>
+          <div>
+            <label for="filter-sampai" class="block text-[11px] font-bold text-slate-600 mb-1">Sampai Tanggal</label>
+            <input type="date" id="filter-sampai" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-[14px] outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500/30">
+          </div>
+          <div>
+            <label for="filter-sales" class="block text-[11px] font-bold text-slate-600 mb-1">Sales</label>
+            <select id="filter-sales" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-[14px] outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500/30">
+              <option value="">Semua Sales</option>
+            </select>
+          </div>
+          <div class="col-span-2 lg:col-span-1">
+            <label for="filter-cari" class="block text-[11px] font-bold text-slate-600 mb-1">Cari</label>
+            <div class="relative">
+              <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+              <input type="text" id="filter-cari" onkeyup="render()" placeholder="Nama toko / kelurahan"
+                class="w-full pl-9 pr-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-[14px] outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500/30">
+            </div>
+          </div>
+          <div class="col-span-2 lg:col-span-1 flex gap-2">
+            <button onclick="muatData()" class="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-[13px] font-bold active:scale-95 transition">
+              <i class="fa-solid fa-filter"></i> Terapkan
+            </button>
+            <button onclick="exportCSV()" class="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[13px] font-bold active:scale-95 transition">
+              <i class="fa-solid fa-file-arrow-down"></i> Export
+            </button>
+          </div>
         </div>
       </div>
-    </div>
+    </section>
 
-    <!-- PETA SEBARAN -->
-    <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-      <div class="px-3 py-2 border-b border-slate-200 flex justify-between items-center">
-        <h2 class="font-bold text-slate-700 text-xs"><i class="fa-solid fa-map-location-dot text-indigo-600"></i> Sebaran Kunjungan</h2>
-        <span class="text-[10px] text-slate-400">Klik titik untuk detail</span>
+    <!-- ================= PETA + REKAP SALES ================= -->
+    <section class="grid grid-cols-1 xl:grid-cols-3 gap-3">
+      <div class="xl:col-span-2 bg-white rounded-2xl ring-1 ring-slate-200 kartu overflow-hidden">
+        <div class="px-3.5 sm:px-4 py-3 border-b border-slate-100 flex justify-between items-center gap-2">
+          <h2 class="font-bold text-slate-800 text-[13px] flex items-center gap-2">
+            <i class="fa-solid fa-map-location-dot text-indigo-600"></i> Sebaran Kunjungan
+          </h2>
+          <span class="text-[11px] text-slate-400 hidden sm:inline">Klik titik untuk detail</span>
+        </div>
+        <div id="peta" class="h-64 sm:h-80 xl:h-[26rem] w-full bg-slate-100"></div>
       </div>
-      <div id="peta" class="h-72 sm:h-96 w-full bg-slate-100"></div>
-    </div>
 
-    <!-- DAFTAR -->
-    <div id="daftar" class="grid grid-cols-1 lg:grid-cols-2 gap-3 pb-8"></div>
+      <div class="bg-white rounded-2xl ring-1 ring-slate-200 kartu overflow-hidden flex flex-col">
+        <div class="px-3.5 sm:px-4 py-3 border-b border-slate-100">
+          <h2 class="font-bold text-slate-800 text-[13px] flex items-center gap-2">
+            <i class="fa-solid fa-ranking-star text-indigo-600"></i> Kunjungan per Sales
+          </h2>
+        </div>
+        <div id="rekap-sales" class="p-3.5 sm:p-4 space-y-3 overflow-y-auto max-h-64 xl:max-h-none xl:h-[26rem]"></div>
+      </div>
+    </section>
+
+    <!-- ================= DAFTAR ================= -->
+    <section>
+      <div class="flex items-center justify-between gap-2 mb-2.5 px-0.5">
+        <h2 class="font-bold text-slate-800 text-[13px] flex items-center gap-2">
+          <i class="fa-solid fa-clipboard-list text-indigo-600"></i> Rincian Kunjungan
+        </h2>
+        <span id="info-jumlah" class="text-[11px] text-slate-500"></span>
+      </div>
+      <div id="daftar" class="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-3"></div>
+    </section>
   </main>
 
-  <!-- LIGHTBOX FOTO -->
-  <div id="lightbox" onclick="tutupFoto()" class="fixed inset-0 bg-black/90 z-[2500] hidden items-center justify-center p-4">
-    <img id="lightbox-img" class="max-w-full max-h-full object-contain rounded-lg">
+  <!-- ================= LIGHTBOX ================= -->
+  <div id="lightbox" class="fixed inset-0 bg-slate-950/95 z-[2500] hidden items-center justify-center p-4">
+    <button onclick="tutupFoto()" aria-label="Tutup foto"
+      class="absolute top-4 right-4 w-11 h-11 rounded-full bg-white/10 hover:bg-white/20 text-white grid place-items-center text-xl transition">
+      <i class="fa-solid fa-xmark"></i>
+    </button>
+    <div class="max-w-4xl w-full flex flex-col items-center gap-3" onclick="event.stopPropagation()">
+      <img id="lightbox-img" alt="Foto kunjungan" class="max-w-full max-h-[75vh] object-contain rounded-xl shadow-2xl">
+      <p id="lightbox-teks" class="text-center text-slate-300 text-[13px]"></p>
+    </div>
   </div>
+
+  <!-- ================= PEMBERITAHUAN ================= -->
+  <div id="wadah-pesan" class="fixed left-1/2 -translate-x-1/2 top-20 z-[3500] w-[calc(100%-1.5rem)] max-w-sm space-y-2 pointer-events-none"></div>
+
+  <script>
+    // Kelas chip dipakai berulang di bilah rentang cepat.
+    document.querySelectorAll('.chip').forEach(el => {
+      el.className = 'chip shrink-0 text-[12px] font-semibold px-3 py-1.5 rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 transition';
+    });
+  </script>
 
   <script>
     const API = '/api/kunjungan';
@@ -148,6 +274,7 @@
     let data = [];
     let pesanGalat = '';
     let peta, lapisanPin;
+    let hanyaCuriga = false;
 
     const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => (
       { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
@@ -157,6 +284,16 @@
       const d = new Date(iso);
       return isNaN(d) ? '-' : d.toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' });
     };
+
+    function pesan(teks, jenis = 'galat') {
+      const gaya = { sukses: 'bg-emerald-600', galat: 'bg-red-600', info: 'bg-slate-800' }[jenis] || 'bg-slate-800';
+      const ikon = { sukses: 'fa-circle-check', galat: 'fa-circle-exclamation', info: 'fa-circle-info' }[jenis] || 'fa-circle-info';
+      const el = document.createElement('div');
+      el.className = `${gaya} text-white text-[13px] font-medium px-3.5 py-2.5 rounded-xl shadow-xl flex items-start gap-2 redup-masuk`;
+      el.innerHTML = `<i class="fa-solid ${ikon} mt-0.5 shrink-0"></i><span>${esc(teks)}</span>`;
+      document.getElementById('wadah-pesan').appendChild(el);
+      setTimeout(() => { el.style.transition = 'opacity .3s'; el.style.opacity = '0'; setTimeout(() => el.remove(), 320); }, 3600);
+    }
 
     // Jarak antara pin yang disimpan sales dan bacaan GPS asli perangkat.
     // Selisih besar berarti pin digeser jauh dari posisi sebenarnya.
@@ -168,25 +305,45 @@
       return Math.round(2 * R * Math.asin(Math.sqrt(a)));
     }
     const AMBANG_GESER_METER = 200;
+    const digeser = (i) => {
+      const g = jarakMeter(i.lat, i.lng, i.gpsLat, i.gpsLng);
+      return g !== null && g > AMBANG_GESER_METER ? g : null;
+    };
 
     // --- MASUK ---
+    function lihatSandi() {
+      const kolom = document.getElementById('input-sandi');
+      const mata = document.getElementById('ikon-mata');
+      const sembunyi = kolom.type === 'password';
+      kolom.type = sembunyi ? 'text' : 'password';
+      mata.className = sembunyi ? 'fa-regular fa-eye-slash' : 'fa-regular fa-eye';
+    }
+
     async function masuk() {
       const nilai = document.getElementById('input-sandi').value;
       if (!nilai) return;
       sandi = nilai;
-      const pesan = document.getElementById('pesan-sandi');
-      pesan.classList.add('hidden');
+
+      const pesanEl = document.getElementById('pesan-sandi');
+      const tombol = document.getElementById('btn-masuk');
+      pesanEl.classList.add('hidden');
+      tombol.disabled = true;
+      tombol.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Memeriksa...';
 
       const hasil = await ambil();
+
+      tombol.disabled = false;
+      tombol.innerHTML = '<span>Masuk</span>';
+
       if (hasil === 'salah') {
         sandi = '';
-        pesan.innerText = 'Kata sandi salah.';
-        pesan.classList.remove('hidden');
+        pesanEl.innerText = 'Kata sandi salah.';
+        pesanEl.classList.remove('hidden');
         return;
       }
       if (hasil === 'error') {
-        pesan.innerText = pesanGalat;
-        pesan.classList.remove('hidden');
+        pesanEl.innerText = pesanGalat;
+        pesanEl.classList.remove('hidden');
         return;
       }
 
@@ -233,9 +390,14 @@
     }
 
     async function muatData() {
+      const ikon = document.getElementById('ikon-muat');
+      ikon.classList.add('fa-spin');
+      tampilkanRangka();
       const hasil = await ambil();
+      ikon.classList.remove('fa-spin');
+
       if (hasil === 'salah') return keluar();
-      if (hasil === 'error') return alert(pesanGalat);
+      if (hasil === 'error') { render(); return pesan(pesanGalat); }
       render();
     }
 
@@ -245,6 +407,50 @@
       sel.innerHTML = '<option value="">Semua Sales</option>' +
         daftar.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('');
       sel.value = terpilih;
+    }
+
+    // --- FILTER ---
+    function bukaFilter() {
+      document.getElementById('panel-filter').classList.toggle('hidden');
+    }
+
+    const keTanggal = (d) => {
+      // Format YYYY-MM-DD di zona waktu setempat, bukan UTC, supaya "hari ini"
+      // tidak meleset satu hari di WITA.
+      const p = (n) => String(n).padStart(2, '0');
+      return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+    };
+
+    function rentangCepat(jenis) {
+      const dari = document.getElementById('filter-dari');
+      const sampai = document.getElementById('filter-sampai');
+      const kini = new Date();
+
+      if (jenis === 'semua') {
+        dari.value = ''; sampai.value = '';
+      } else {
+        const mundur = jenis === 'hari' ? 0 : Number(jenis) - 1;
+        const awal = new Date(kini);
+        awal.setDate(awal.getDate() - mundur);
+        dari.value = keTanggal(awal);
+        sampai.value = keTanggal(kini);
+      }
+
+      document.querySelectorAll('[data-rentang]').forEach(el => {
+        const aktif = el.dataset.rentang === jenis;
+        el.className = 'chip shrink-0 text-[12px] font-semibold px-3 py-1.5 rounded-lg transition '
+          + (aktif ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200');
+      });
+
+      muatData();
+    }
+
+    function saringCuriga() {
+      hanyaCuriga = !hanyaCuriga;
+      document.getElementById('kartu-curiga').className =
+        'bg-white rounded-2xl kartu p-3.5 sm:p-4 text-left transition ring-1 '
+        + (hanyaCuriga ? 'ring-2 ring-amber-400' : 'ring-slate-200 hover:ring-amber-300');
+      render();
     }
 
     // --- PETA ---
@@ -267,9 +473,8 @@
       const titik = [];
 
       daftar.forEach(item => {
-        const geser = jarakMeter(item.lat, item.lng, item.gpsLat, item.gpsLng);
-        const mencurigakan = geser !== null && geser > AMBANG_GESER_METER;
-        const warna = mencurigakan ? '#f59e0b' : '#4f46e5';
+        const geser = digeser(item);
+        const warna = geser ? '#f59e0b' : '#4f46e5';
 
         const ikon = L.divIcon({
           className: '',
@@ -279,10 +484,10 @@
 
         L.marker([item.lat, item.lng], { icon: ikon })
           .bindPopup(`
-            <div style="min-width:150px">
-              <b>${esc(item.nama)}</b><br>
-              <span style="color:#64748b">${esc(item.salesName)} · ${esc(waktuPanjang(item.waktu))}</span><br>
-              <a href="#" onclick="bukaFoto('${esc(item.id)}'); return false;">Lihat foto</a>
+            <div style="min-width:170px;line-height:1.45">
+              <b style="font-size:13px">${esc(item.nama)}</b><br>
+              <span style="color:#64748b;font-size:12px">${esc(item.salesName)}<br>${esc(waktuPanjang(item.waktu))}</span><br>
+              <a href="#" style="font-weight:600" onclick="bukaFoto('${esc(item.id)}'); return false;">Lihat foto</a>
             </div>
           `)
           .addTo(lapisanPin);
@@ -299,82 +504,153 @@
     // --- TAMPILAN ---
     function terfilter() {
       const cari = document.getElementById('filter-cari').value.toLowerCase();
-      if (!cari) return data;
-      return data.filter(i =>
+      let hasil = data;
+      if (hanyaCuriga) hasil = hasil.filter(i => digeser(i));
+      if (!cari) return hasil;
+      return hasil.filter(i =>
         (i.nama || '').toLowerCase().includes(cari) ||
         (i.kelurahan || '').toLowerCase().includes(cari) ||
+        (i.salesName || '').toLowerCase().includes(cari) ||
         (i.deskripsi || '').toLowerCase().includes(cari)
       );
+    }
+
+    function tampilkanRangka() {
+      document.getElementById('daftar').innerHTML = Array.from({ length: 4 }).map(() => `
+        <div class="bg-white rounded-2xl ring-1 ring-slate-200 kartu overflow-hidden flex h-36">
+          <div class="w-28 sm:w-32 rangka shrink-0"></div>
+          <div class="p-3.5 flex-1 space-y-2.5">
+            <div class="h-3.5 w-2/3 rounded rangka"></div>
+            <div class="h-3 w-1/3 rounded rangka"></div>
+            <div class="h-3 w-1/2 rounded rangka"></div>
+            <div class="h-3 w-3/4 rounded rangka"></div>
+          </div>
+        </div>`).join('');
     }
 
     function render() {
       const daftar = terfilter();
       const hariIni = new Date().toDateString();
+      const semuaCuriga = data.filter(i => digeser(i)).length;
 
       document.getElementById('stat-total').innerText = daftar.length;
       document.getElementById('stat-hari-ini').innerText =
-        daftar.filter(i => new Date(i.waktu).toDateString() === hariIni).length;
-      document.getElementById('stat-sales').innerText =
-        new Set(daftar.map(i => i.salesName)).size;
-      document.getElementById('stat-curiga').innerText =
-        daftar.filter(i => {
-          const g = jarakMeter(i.lat, i.lng, i.gpsLat, i.gpsLng);
-          return g !== null && g > AMBANG_GESER_METER;
-        }).length;
+        data.filter(i => new Date(i.waktu).toDateString() === hariIni).length;
+      document.getElementById('stat-sales').innerText = new Set(data.map(i => i.salesName)).size;
+      document.getElementById('stat-curiga').innerText = semuaCuriga;
+
+      document.getElementById('info-jumlah').innerText =
+        daftar.length ? `${daftar.length} kunjungan${hanyaCuriga ? ' · hanya yang perlu dicek' : ''}` : '';
 
       gambarPin(daftar);
+      gambarRekapSales(daftar);
 
       const wadah = document.getElementById('daftar');
       if (daftar.length === 0) {
-        wadah.innerHTML = `<p class="col-span-full text-center text-slate-400 text-sm py-12">Tidak ada kunjungan pada rentang ini.</p>`;
+        wadah.innerHTML = `
+          <div class="col-span-full bg-white rounded-2xl ring-1 ring-slate-200 kartu py-16 text-center">
+            <div class="w-16 h-16 rounded-2xl bg-slate-100 text-slate-400 grid place-items-center mx-auto mb-3 text-2xl">
+              <i class="fa-solid fa-inbox"></i>
+            </div>
+            <p class="font-semibold text-slate-600 text-sm">Tidak ada kunjungan</p>
+            <p class="text-[12px] text-slate-400 mt-1">Coba ubah rentang tanggal atau kata pencarian.</p>
+          </div>`;
         return;
       }
 
       wadah.innerHTML = daftar.map(item => {
-        const geser = jarakMeter(item.lat, item.lng, item.gpsLat, item.gpsLng);
-        const mencurigakan = geser !== null && geser > AMBANG_GESER_METER;
+        const geser = digeser(item);
 
         return `
-        <div class="bg-white rounded-xl border ${mencurigakan ? 'border-amber-300' : 'border-slate-200'} shadow-sm overflow-hidden flex">
-          <img data-foto="${esc(item.id)}" onclick="bukaFoto('${esc(item.id)}')"
-            class="w-28 sm:w-36 object-cover bg-slate-100 cursor-zoom-in shrink-0">
-          <div class="p-3 flex-1 flex flex-col justify-between min-w-0">
-            <div class="min-w-0">
-              <div class="flex justify-between items-start gap-2">
-                <h3 class="font-bold text-slate-800 text-sm truncate">${esc(item.nama)}</h3>
-                <span class="text-[10px] text-amber-500 font-bold whitespace-nowrap">⭐ ${esc(item.rating ?? '-')}</span>
-              </div>
-              <p class="text-[11px] text-indigo-700 font-semibold truncate">
-                <i class="fa-solid fa-user text-slate-400"></i> ${esc(item.salesName)}
-              </p>
-              <p class="text-[11px] text-slate-500 truncate">
-                <i class="fa-solid fa-map-pin text-indigo-500"></i> ${esc(item.kelurahan)}
-                ${item.akurasi != null ? `<span class="text-slate-400">· ±${esc(item.akurasi)}m</span>` : ''}
-              </p>
-              ${mencurigakan ? `
-                <p class="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-1 mt-1.5">
-                  <i class="fa-solid fa-triangle-exclamation"></i> Pin digeser ${esc(geser)}m dari posisi GPS asli
-                </p>` : ''}
-              ${item.deskripsi ? `
-                <div class="text-[11px] text-slate-600 bg-slate-50 p-1.5 rounded border border-slate-100 mt-1.5 max-h-20 overflow-y-auto whitespace-pre-line">${esc(item.deskripsi)}</div>` : ''}
+        <article class="bg-white rounded-2xl ring-1 ${geser ? 'ring-amber-300' : 'ring-slate-200'} kartu overflow-hidden flex redup-masuk">
+          <div class="relative w-28 sm:w-32 shrink-0 bg-slate-100">
+            <img data-foto="${esc(item.id)}" onclick="bukaFoto('${esc(item.id)}')" alt=""
+              class="absolute inset-0 w-full h-full object-cover cursor-zoom-in">
+          </div>
+
+          <div class="p-3.5 flex-1 flex flex-col min-w-0">
+            <div class="flex justify-between items-start gap-2">
+              <h3 class="font-bold text-slate-900 text-[14px] leading-tight truncate">${esc(item.nama)}</h3>
+              <span class="text-[11px] text-amber-500 font-bold whitespace-nowrap shrink-0">
+                <i class="fa-solid fa-star text-[10px]"></i> ${esc(item.rating ?? '-')}
+              </span>
             </div>
-            <div class="flex justify-between items-end mt-2 pt-2 border-t border-slate-100 gap-2">
-              <span class="text-[10px] font-mono text-slate-400 truncate">${esc(waktuPanjang(item.waktu))}</span>
-              <div class="flex gap-2 shrink-0">
+
+            <p class="text-[12px] text-indigo-700 font-semibold truncate mt-1">
+              <i class="fa-solid fa-user text-slate-400 text-[10px]"></i> ${esc(item.salesName)}
+            </p>
+            <p class="text-[12px] text-slate-500 truncate">
+              <i class="fa-solid fa-location-dot text-indigo-500 text-[10px]"></i> ${esc(item.kelurahan)}
+              ${item.akurasi != null ? `<span class="text-slate-400">· ±${esc(item.akurasi)} m</span>` : ''}
+            </p>
+
+            ${geser ? `
+              <p class="text-[11px] text-amber-900 bg-amber-50 ring-1 ring-amber-200 rounded-lg px-2 py-1.5 mt-2">
+                <i class="fa-solid fa-triangle-exclamation"></i> Pin digeser ${esc(geser)} m dari GPS asli
+              </p>` : ''}
+
+            ${item.deskripsi ? `
+              <div class="text-[11px] text-slate-600 bg-slate-50 ring-1 ring-slate-100 rounded-lg px-2 py-1.5 mt-2">
+                <p class="whitespace-pre-line baris-3">${esc(item.deskripsi)}</p>
+              </div>` : ''}
+
+            <div class="flex justify-between items-center gap-2 mt-auto pt-2.5">
+              <span class="text-[11px] text-slate-400 truncate">${esc(waktuPanjang(item.waktu))}</span>
+              <div class="flex gap-1.5 shrink-0">
                 <a href="https://www.google.com/maps?q=${esc(item.lat)},${esc(item.lng)}" target="_blank" rel="noopener"
-                  class="text-indigo-600 bg-indigo-50 px-2 py-1 rounded text-[11px] font-bold border border-indigo-100">
+                  class="text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition">
                   <i class="fa-solid fa-diamond-turn-right"></i> Peta
                 </a>
-                <button onclick="hapus('${esc(item.id)}')" class="text-red-400 text-[11px] px-1 active:scale-95">
+                <button onclick="hapus('${esc(item.id)}')" aria-label="Hapus kunjungan"
+                  class="w-8 h-8 grid place-items-center rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 text-[12px] transition">
                   <i class="fa-solid fa-trash"></i>
                 </button>
               </div>
             </div>
           </div>
-        </div>`;
+        </article>`;
       }).join('');
 
       wadah.querySelectorAll('img[data-foto]').forEach(el => pasangFoto(el, el.dataset.foto));
+    }
+
+    // Rekap sederhana per sales: yang penting bagi pemilik adalah siapa yang
+    // jalan dan siapa yang tidak, bukan angka rata-rata.
+    function gambarRekapSales(daftar) {
+      const wadah = document.getElementById('rekap-sales');
+      const hitung = new Map();
+
+      daftar.forEach(i => {
+        const nama = i.salesName || 'Tanpa Nama';
+        const b = hitung.get(nama) || { jumlah: 0, curiga: 0, terakhir: 0 };
+        b.jumlah++;
+        if (digeser(i)) b.curiga++;
+        const t = Date.parse(i.waktu);
+        if (Number.isFinite(t) && t > b.terakhir) b.terakhir = t;
+        hitung.set(nama, b);
+      });
+
+      const urut = [...hitung.entries()].sort((a, b) => b[1].jumlah - a[1].jumlah);
+      if (urut.length === 0) {
+        wadah.innerHTML = `<p class="text-[12px] text-slate-400 text-center py-8">Belum ada data.</p>`;
+        return;
+      }
+
+      const tertinggi = urut[0][1].jumlah || 1;
+      wadah.innerHTML = urut.map(([nama, b]) => `
+        <div>
+          <div class="flex justify-between items-baseline gap-2 mb-1">
+            <span class="text-[13px] font-semibold text-slate-800 truncate">${esc(nama)}</span>
+            <span class="text-[12px] font-bold text-indigo-700 tabular-nums shrink-0">${b.jumlah}</span>
+          </div>
+          <div class="h-2 bg-slate-100 rounded-full overflow-hidden">
+            <div class="h-full bg-indigo-500 rounded-full" style="width:${Math.round(b.jumlah / tertinggi * 100)}%"></div>
+          </div>
+          <div class="flex justify-between items-center mt-1 text-[11px] text-slate-400">
+            <span>Terakhir: ${b.terakhir ? esc(waktuPanjang(new Date(b.terakhir).toISOString())) : '-'}</span>
+            ${b.curiga ? `<span class="text-amber-600 font-semibold shrink-0">${b.curiga} perlu dicek</span>` : ''}
+          </div>
+        </div>`).join('');
     }
 
     // Foto tidak punya alamat publik, jadi tidak bisa dipasang langsung ke
@@ -397,24 +673,34 @@
     }
 
     async function pasangFoto(el, id) {
+      el.parentElement.classList.add('rangka');
       const url = await alamatFoto(id);
-      if (url) el.src = url;
-      else el.replaceWith(Object.assign(document.createElement('div'), {
-        className: el.className + ' flex items-center justify-center text-slate-400 text-[10px]',
-        textContent: 'foto gagal dimuat'
-      }));
+      el.parentElement.classList.remove('rangka');
+
+      if (url) { el.src = url; return; }
+      el.parentElement.innerHTML =
+        `<div class="absolute inset-0 grid place-items-center text-slate-400 text-[11px] text-center px-2">
+           <span><i class="fa-regular fa-image text-lg"></i><br>foto gagal dimuat</span>
+         </div>`;
     }
 
     function bukaFoto(id) {
       if (!id) return;
+      const item = data.find(i => i.id === id);
       const img = document.getElementById('lightbox-img');
       img.removeAttribute('src');
+      document.getElementById('lightbox-teks').innerText = item
+        ? `${item.nama} · ${item.salesName} · ${waktuPanjang(item.waktu)}` : '';
       document.getElementById('lightbox').classList.replace('hidden', 'flex');
       alamatFoto(id).then(url => { if (url) img.src = url; });
     }
+
     function tutupFoto() {
       document.getElementById('lightbox').classList.replace('flex', 'hidden');
     }
+
+    document.getElementById('lightbox').addEventListener('click', tutupFoto);
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') tutupFoto(); });
 
     async function hapus(id) {
       if (!confirm('Hapus kunjungan ini secara permanen dari pusat data?')) return;
@@ -422,14 +708,15 @@
         method: 'DELETE',
         headers: { 'x-owner-password': sandi }
       });
-      if (!res.ok) return alert('Gagal menghapus.');
+      if (!res.ok) return pesan('Gagal menghapus.');
       data = data.filter(i => i.id !== id);
       render();
+      pesan('Kunjungan dihapus.', 'sukses');
     }
 
     function exportCSV() {
       const daftar = terfilter();
-      if (daftar.length === 0) return alert('Tidak ada data untuk diexport.');
+      if (daftar.length === 0) return pesan('Tidak ada data untuk diexport.');
 
       const kolom = ['Waktu', 'Sales', 'Nama Toko', 'Kelurahan', 'Alamat', 'Rating',
         'Latitude', 'Longitude', 'Akurasi GPS (m)', 'Geser dari GPS (m)', 'Catatan Pesanan'];
@@ -452,6 +739,7 @@
 
     // Sesi sebelumnya masih hidup di tab ini: langsung coba masuk.
     if (sandi) {
+      tampilkanRangka();
       ambil().then(hasil => {
         if (hasil !== 'ok') { simpanan.hapus('myzona_sandi_pemilik'); sandi = ''; return; }
         document.getElementById('gerbang').classList.add('hidden');
