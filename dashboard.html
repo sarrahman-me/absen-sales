@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="id">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard Pemilik - My Zona</title>
+  <meta name="theme-color" content="#3730a3">
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+  </style>
+</head>
+
+<body class="bg-slate-100 min-h-screen">
+
+  <!-- GERBANG KATA SANDI -->
+  <div id="gerbang" class="fixed inset-0 bg-slate-900 z-[3000] flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm">
+      <div class="text-center mb-5">
+        <div class="w-12 h-12 bg-indigo-100 text-indigo-700 rounded-xl flex items-center justify-center mx-auto mb-3 text-xl">
+          <i class="fa-solid fa-lock"></i>
+        </div>
+        <h1 class="font-bold text-slate-800">Dashboard Pemilik</h1>
+        <p class="text-xs text-slate-500 mt-1">Masukkan kata sandi untuk melihat laporan kunjungan.</p>
+      </div>
+      <input type="password" id="input-sandi" placeholder="Kata sandi"
+        class="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm mb-2 focus:ring-2 focus:ring-indigo-500 outline-none"
+        onkeydown="if(event.key==='Enter') masuk()">
+      <p id="pesan-sandi" class="text-xs text-red-500 mb-2 hidden"></p>
+      <button onclick="masuk()" class="w-full py-2.5 bg-indigo-600 text-white rounded-lg font-bold text-sm active:scale-95">
+        Masuk
+      </button>
+    </div>
+  </div>
+
+  <!-- HEADER -->
+  <header class="bg-indigo-800 text-white px-4 py-3 shadow-md flex justify-between items-center sticky top-0 z-[1500]">
+    <div class="flex items-center gap-2">
+      <div class="bg-white/20 p-1.5 rounded-lg"><i class="fa-solid fa-chart-line"></i></div>
+      <div>
+        <h1 class="font-bold text-sm leading-tight">Dashboard Pemilik</h1>
+        <p class="text-[10px] text-indigo-200">Pantau kunjungan sales lapangan</p>
+      </div>
+    </div>
+    <div class="flex items-center gap-2">
+      <button onclick="muatData()" class="text-xs bg-white/15 px-3 py-1.5 rounded-lg font-semibold active:scale-95">
+        <i class="fa-solid fa-rotate"></i> Muat Ulang
+      </button>
+      <button onclick="keluar()" class="text-xs bg-white/15 px-3 py-1.5 rounded-lg font-semibold active:scale-95">
+        <i class="fa-solid fa-right-from-bracket"></i>
+      </button>
+    </div>
+  </header>
+
+  <main class="p-3 sm:p-4 max-w-6xl mx-auto space-y-4">
+
+    <!-- RINGKASAN -->
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div class="bg-white rounded-xl border border-slate-200 p-3 shadow-sm">
+        <p class="text-[10px] text-slate-500 font-semibold uppercase tracking-wide">Kunjungan Hari Ini</p>
+        <p class="text-2xl font-bold text-indigo-700" id="stat-hari-ini">0</p>
+      </div>
+      <div class="bg-white rounded-xl border border-slate-200 p-3 shadow-sm">
+        <p class="text-[10px] text-slate-500 font-semibold uppercase tracking-wide">Total Ditampilkan</p>
+        <p class="text-2xl font-bold text-slate-800" id="stat-total">0</p>
+      </div>
+      <div class="bg-white rounded-xl border border-slate-200 p-3 shadow-sm">
+        <p class="text-[10px] text-slate-500 font-semibold uppercase tracking-wide">Sales Aktif</p>
+        <p class="text-2xl font-bold text-slate-800" id="stat-sales">0</p>
+      </div>
+      <div class="bg-white rounded-xl border border-slate-200 p-3 shadow-sm">
+        <p class="text-[10px] text-slate-500 font-semibold uppercase tracking-wide">Perlu Dicek</p>
+        <p class="text-2xl font-bold text-amber-600" id="stat-curiga">0</p>
+      </div>
+    </div>
+
+    <!-- FILTER -->
+    <div class="bg-white rounded-xl border border-slate-200 p-3 shadow-sm">
+      <div class="grid grid-cols-2 lg:grid-cols-5 gap-2 items-end">
+        <div>
+          <label class="block text-[10px] font-bold text-slate-600 mb-1">Dari Tanggal</label>
+          <input type="date" id="filter-dari" class="w-full px-2 py-1.5 border border-slate-300 rounded-lg text-xs">
+        </div>
+        <div>
+          <label class="block text-[10px] font-bold text-slate-600 mb-1">Sampai Tanggal</label>
+          <input type="date" id="filter-sampai" class="w-full px-2 py-1.5 border border-slate-300 rounded-lg text-xs">
+        </div>
+        <div>
+          <label class="block text-[10px] font-bold text-slate-600 mb-1">Sales</label>
+          <select id="filter-sales" class="w-full px-2 py-1.5 border border-slate-300 rounded-lg text-xs">
+            <option value="">Semua Sales</option>
+          </select>
+        </div>
+        <div class="col-span-2 lg:col-span-1">
+          <label class="block text-[10px] font-bold text-slate-600 mb-1">Cari Toko</label>
+          <input type="text" id="filter-cari" onkeyup="render()" placeholder="Nama toko / kelurahan"
+            class="w-full px-2 py-1.5 border border-slate-300 rounded-lg text-xs">
+        </div>
+        <div class="col-span-2 lg:col-span-1 flex gap-2">
+          <button onclick="muatData()" class="flex-1 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-bold active:scale-95">
+            <i class="fa-solid fa-filter"></i> Terapkan
+          </button>
+          <button onclick="exportCSV()" class="flex-1 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-bold active:scale-95">
+            <i class="fa-solid fa-file-excel"></i> Export
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- PETA SEBARAN -->
+    <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+      <div class="px-3 py-2 border-b border-slate-200 flex justify-between items-center">
+        <h2 class="font-bold text-slate-700 text-xs"><i class="fa-solid fa-map-location-dot text-indigo-600"></i> Sebaran Kunjungan</h2>
+        <span class="text-[10px] text-slate-400">Klik titik untuk detail</span>
+      </div>
+      <div id="peta" class="h-72 sm:h-96 w-full bg-slate-100"></div>
+    </div>
+
+    <!-- DAFTAR -->
+    <div id="daftar" class="grid grid-cols-1 lg:grid-cols-2 gap-3 pb-8"></div>
+  </main>
+
+  <!-- LIGHTBOX FOTO -->
+  <div id="lightbox" onclick="tutupFoto()" class="fixed inset-0 bg-black/90 z-[2500] hidden items-center justify-center p-4">
+    <img id="lightbox-img" class="max-w-full max-h-full object-contain rounded-lg">
+  </div>
+
+  <script>
+    const API = '/api/kunjungan';
+
+    // Safari mode penyamaran dan beberapa peramban melempar galat saat menyentuh
+    // sessionStorage, yang bisa mematikan seluruh halaman kalau tidak dijaga.
+    const simpanan = {
+      baca(k) { try { return sessionStorage.getItem(k); } catch (e) { return null; } },
+      tulis(k, v) { try { sessionStorage.setItem(k, v); } catch (e) { } },
+      hapus(k) { try { sessionStorage.removeItem(k); } catch (e) { } }
+    };
+
+    let sandi = simpanan.baca('myzona_sandi_pemilik') || '';
+    let data = [];
+    let peta, lapisanPin;
+
+    const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => (
+      { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+    ));
+
+    const waktuPanjang = (iso) => {
+      const d = new Date(iso);
+      return isNaN(d) ? '-' : d.toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' });
+    };
+
+    // Jarak antara pin yang disimpan sales dan bacaan GPS asli perangkat.
+    // Selisih besar berarti pin digeser jauh dari posisi sebenarnya.
+    function jarakMeter(lat1, lng1, lat2, lng2) {
+      if ([lat1, lng1, lat2, lng2].some(v => typeof v !== 'number')) return null;
+      const R = 6371000, rad = Math.PI / 180;
+      const dLat = (lat2 - lat1) * rad, dLng = (lng2 - lng1) * rad;
+      const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * rad) * Math.cos(lat2 * rad) * Math.sin(dLng / 2) ** 2;
+      return Math.round(2 * R * Math.asin(Math.sqrt(a)));
+    }
+    const AMBANG_GESER_METER = 200;
+
+    // --- MASUK ---
+    async function masuk() {
+      const nilai = document.getElementById('input-sandi').value;
+      if (!nilai) return;
+      sandi = nilai;
+      const pesan = document.getElementById('pesan-sandi');
+      pesan.classList.add('hidden');
+
+      const hasil = await ambil();
+      if (hasil === 'salah') {
+        sandi = '';
+        pesan.innerText = 'Kata sandi salah.';
+        pesan.classList.remove('hidden');
+        return;
+      }
+      if (hasil === 'error') {
+        pesan.innerText = 'Server bermasalah. Coba lagi sebentar.';
+        pesan.classList.remove('hidden');
+        return;
+      }
+
+      simpanan.tulis('myzona_sandi_pemilik', sandi);
+      document.getElementById('gerbang').classList.add('hidden');
+      document.getElementById('input-sandi').value = '';
+      initPeta();
+      render();
+    }
+
+    function keluar() {
+      simpanan.hapus('myzona_sandi_pemilik');
+      location.reload();
+    }
+
+    // --- AMBIL DATA ---
+    async function ambil() {
+      const q = new URLSearchParams();
+      const dari = document.getElementById('filter-dari').value;
+      const sampai = document.getElementById('filter-sampai').value;
+      const sales = document.getElementById('filter-sales').value;
+      if (dari) q.set('dari', dari);
+      if (sampai) q.set('sampai', sampai);
+      if (sales) q.set('sales', sales);
+
+      try {
+        const res = await fetch(`${API}?${q}`, { headers: { 'x-owner-password': sandi } });
+        if (res.status === 401) return 'salah';
+        if (!res.ok) return 'error';
+
+        const hasil = await res.json();
+        data = hasil.kunjungan || [];
+        isiPilihanSales(hasil.daftarSales || []);
+        return 'ok';
+      } catch (err) {
+        return 'error';
+      }
+    }
+
+    async function muatData() {
+      const hasil = await ambil();
+      if (hasil === 'salah') return keluar();
+      if (hasil === 'error') return alert('Gagal memuat data. Periksa koneksi internet.');
+      render();
+    }
+
+    function isiPilihanSales(daftar) {
+      const sel = document.getElementById('filter-sales');
+      const terpilih = sel.value;
+      sel.innerHTML = '<option value="">Semua Sales</option>' +
+        daftar.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('');
+      sel.value = terpilih;
+    }
+
+    // --- PETA ---
+    function initPeta() {
+      if (peta) return;
+      peta = L.map('peta').setView([-0.50218, 117.15364], 12);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(peta);
+      lapisanPin = L.layerGroup().addTo(peta);
+    }
+
+    function gambarPin(daftar) {
+      if (!lapisanPin) return;
+      // Peta dibuat saat masih tertutup gerbang kata sandi, jadi Leaflet mengira
+      // kotaknya berukuran nol dan hanya menggambar sebagian ubin.
+      peta.invalidateSize();
+      lapisanPin.clearLayers();
+      const titik = [];
+
+      daftar.forEach(item => {
+        const geser = jarakMeter(item.lat, item.lng, item.gpsLat, item.gpsLng);
+        const mencurigakan = geser !== null && geser > AMBANG_GESER_METER;
+        const warna = mencurigakan ? '#f59e0b' : '#4f46e5';
+
+        const ikon = L.divIcon({
+          className: '',
+          html: `<div style="background:${warna}" class="w-7 h-7 rounded-full flex items-center justify-center shadow-lg border-2 border-white text-white text-[11px]"><i class="fa-solid fa-shop"></i></div>`,
+          iconSize: [28, 28], iconAnchor: [14, 14]
+        });
+
+        L.marker([item.lat, item.lng], { icon: ikon })
+          .bindPopup(`
+            <div style="min-width:150px">
+              <b>${esc(item.nama)}</b><br>
+              <span style="color:#64748b">${esc(item.salesName)} · ${esc(waktuPanjang(item.waktu))}</span><br>
+              <a href="${esc(item.fotoUrl)}" target="_blank" rel="noopener">Lihat foto</a>
+            </div>
+          `)
+          .addTo(lapisanPin);
+        titik.push([item.lat, item.lng]);
+      });
+
+      if (titik.length) peta.fitBounds(titik, { padding: [40, 40], maxZoom: 16 });
+    }
+
+    // --- TAMPILAN ---
+    function terfilter() {
+      const cari = document.getElementById('filter-cari').value.toLowerCase();
+      if (!cari) return data;
+      return data.filter(i =>
+        (i.nama || '').toLowerCase().includes(cari) ||
+        (i.kelurahan || '').toLowerCase().includes(cari) ||
+        (i.deskripsi || '').toLowerCase().includes(cari)
+      );
+    }
+
+    function render() {
+      const daftar = terfilter();
+      const hariIni = new Date().toDateString();
+
+      document.getElementById('stat-total').innerText = daftar.length;
+      document.getElementById('stat-hari-ini').innerText =
+        daftar.filter(i => new Date(i.waktu).toDateString() === hariIni).length;
+      document.getElementById('stat-sales').innerText =
+        new Set(daftar.map(i => i.salesName)).size;
+      document.getElementById('stat-curiga').innerText =
+        daftar.filter(i => {
+          const g = jarakMeter(i.lat, i.lng, i.gpsLat, i.gpsLng);
+          return g !== null && g > AMBANG_GESER_METER;
+        }).length;
+
+      gambarPin(daftar);
+
+      const wadah = document.getElementById('daftar');
+      if (daftar.length === 0) {
+        wadah.innerHTML = `<p class="col-span-full text-center text-slate-400 text-sm py-12">Tidak ada kunjungan pada rentang ini.</p>`;
+        return;
+      }
+
+      wadah.innerHTML = daftar.map(item => {
+        const geser = jarakMeter(item.lat, item.lng, item.gpsLat, item.gpsLng);
+        const mencurigakan = geser !== null && geser > AMBANG_GESER_METER;
+
+        return `
+        <div class="bg-white rounded-xl border ${mencurigakan ? 'border-amber-300' : 'border-slate-200'} shadow-sm overflow-hidden flex">
+          <img src="${esc(item.fotoUrl)}" loading="lazy" onclick="bukaFoto('${esc(item.fotoUrl)}')"
+            class="w-28 sm:w-36 object-cover bg-slate-100 cursor-zoom-in shrink-0">
+          <div class="p-3 flex-1 flex flex-col justify-between min-w-0">
+            <div class="min-w-0">
+              <div class="flex justify-between items-start gap-2">
+                <h3 class="font-bold text-slate-800 text-sm truncate">${esc(item.nama)}</h3>
+                <span class="text-[10px] text-amber-500 font-bold whitespace-nowrap">⭐ ${esc(item.rating ?? '-')}</span>
+              </div>
+              <p class="text-[11px] text-indigo-700 font-semibold truncate">
+                <i class="fa-solid fa-user text-slate-400"></i> ${esc(item.salesName)}
+              </p>
+              <p class="text-[11px] text-slate-500 truncate">
+                <i class="fa-solid fa-map-pin text-indigo-500"></i> ${esc(item.kelurahan)}
+                ${item.akurasi != null ? `<span class="text-slate-400">· ±${esc(item.akurasi)}m</span>` : ''}
+              </p>
+              ${mencurigakan ? `
+                <p class="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-1 mt-1.5">
+                  <i class="fa-solid fa-triangle-exclamation"></i> Pin digeser ${esc(geser)}m dari posisi GPS asli
+                </p>` : ''}
+              ${item.deskripsi ? `
+                <div class="text-[11px] text-slate-600 bg-slate-50 p-1.5 rounded border border-slate-100 mt-1.5 max-h-20 overflow-y-auto whitespace-pre-line">${esc(item.deskripsi)}</div>` : ''}
+            </div>
+            <div class="flex justify-between items-end mt-2 pt-2 border-t border-slate-100 gap-2">
+              <span class="text-[10px] font-mono text-slate-400 truncate">${esc(waktuPanjang(item.waktu))}</span>
+              <div class="flex gap-2 shrink-0">
+                <a href="https://www.google.com/maps?q=${esc(item.lat)},${esc(item.lng)}" target="_blank" rel="noopener"
+                  class="text-indigo-600 bg-indigo-50 px-2 py-1 rounded text-[11px] font-bold border border-indigo-100">
+                  <i class="fa-solid fa-diamond-turn-right"></i> Peta
+                </a>
+                <button onclick="hapus('${esc(item.id)}')" class="text-red-400 text-[11px] px-1 active:scale-95">
+                  <i class="fa-solid fa-trash"></i>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>`;
+      }).join('');
+    }
+
+    function bukaFoto(url) {
+      if (!url) return;
+      document.getElementById('lightbox-img').src = url;
+      document.getElementById('lightbox').classList.replace('hidden', 'flex');
+    }
+    function tutupFoto() {
+      document.getElementById('lightbox').classList.replace('flex', 'hidden');
+    }
+
+    async function hapus(id) {
+      if (!confirm('Hapus kunjungan ini secara permanen dari pusat data?')) return;
+      const res = await fetch(`${API}?id=${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+        headers: { 'x-owner-password': sandi }
+      });
+      if (!res.ok) return alert('Gagal menghapus.');
+      data = data.filter(i => i.id !== id);
+      render();
+    }
+
+    function exportCSV() {
+      const daftar = terfilter();
+      if (daftar.length === 0) return alert('Tidak ada data untuk diexport.');
+
+      const kolom = ['Waktu', 'Sales', 'Nama Toko', 'Kelurahan', 'Alamat', 'Rating',
+        'Latitude', 'Longitude', 'Akurasi GPS (m)', 'Geser dari GPS (m)', 'Catatan Pesanan', 'Link Foto'];
+      const sel = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+
+      const baris = daftar.map(i => [
+        waktuPanjang(i.waktu), i.salesName, i.nama, i.kelurahan, i.alamat, i.rating,
+        i.lat, i.lng, i.akurasi, jarakMeter(i.lat, i.lng, i.gpsLat, i.gpsLng), i.deskripsi, i.fotoUrl
+      ].map(sel).join(','));
+
+      // ﻿ (BOM) supaya huruf beraksen tidak berantakan saat dibuka di Excel.
+      const isi = '﻿' + kolom.map(sel).join(',') + '\r\n' + baris.join('\r\n');
+      const url = URL.createObjectURL(new Blob([isi], { type: 'text/csv;charset=utf-8;' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `Rekap_Kunjungan_${new Date().toISOString().split('T')[0]}.csv`;
+      document.body.appendChild(link); link.click(); document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    }
+
+    // Sesi sebelumnya masih hidup di tab ini: langsung coba masuk.
+    if (sandi) {
+      ambil().then(hasil => {
+        if (hasil !== 'ok') { simpanan.hapus('myzona_sandi_pemilik'); sandi = ''; return; }
+        document.getElementById('gerbang').classList.add('hidden');
+        initPeta();
+        render();
+      });
+    }
+  </script>
+</body>
+
+</html>

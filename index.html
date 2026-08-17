@@ -22,7 +22,7 @@
       user-select: none;
     }
 
-    /* Perbaikan: Membuat peta terkunci pas di kontainernya, anti-tenggelam */
+    /* Peta terkunci pas di kontainernya, anti-tenggelam */
     #map {
       position: absolute;
       top: 0;
@@ -60,11 +60,11 @@
             class="font-semibold underline cursor-pointer" onclick="changeSalesName()">Sales Samarinda</span></p>
       </div>
     </div>
-    <div id="sync-badge"
-      class="text-[9px] bg-amber-500 px-2 py-1 rounded-full text-white font-medium flex items-center gap-1 shadow">
+    <button id="sync-badge" onclick="sinkronkanSekarang()"
+      class="text-[9px] bg-slate-500 px-2 py-1 rounded-full text-white font-medium flex items-center gap-1 shadow active:scale-95">
       <span id="sync-dot" class="w-1.5 h-1.5 rounded-full bg-white"></span>
-      <span id="sync-text">Offline</span>
-    </div>
+      <span id="sync-text">Memeriksa...</span>
+    </button>
   </header>
 
   <!-- Tab Navigasi Atas -->
@@ -103,7 +103,7 @@
 
         <!-- Tombol Action (Kanan) -->
         <div class="flex flex-col gap-2 shrink-0 pointer-events-auto">
-          <button onclick="getCurrentLocation(true)"
+          <button onclick="getCurrentLocation()"
             class="w-10 h-10 bg-white text-indigo-600 rounded-full shadow-lg flex items-center justify-center text-lg active:scale-95 border border-slate-200 self-end">
             <i class="fa-solid fa-crosshairs"></i>
           </button>
@@ -226,7 +226,7 @@
       <div class="p-3 bg-white border-t border-slate-200 flex gap-2 shrink-0">
         <button onclick="closeAbsenModal()"
           class="w-1/3 py-2.5 bg-slate-100 text-slate-600 rounded-lg font-bold text-xs">Batal</button>
-        <button onclick="simpanAbsensi()"
+        <button id="btn-simpan" onclick="simpanAbsensi()"
           class="w-2/3 py-2.5 bg-indigo-600 text-white rounded-lg font-bold text-xs shadow-md flex justify-center items-center gap-1.5">
           <i class="fa-solid fa-paper-plane"></i> Simpan Data
         </button>
@@ -237,34 +237,86 @@
   <canvas id="watermark-canvas" class="hidden"></canvas>
 
   <script>
-    let map, activeMarker, mapMarkersList = [];
+    const API = '/api/kunjungan';
+
+    // Foto dikecilkan sebelum distempel: HP zaman sekarang menghasilkan foto
+    // 3-5 MB yang mustahil dikirim lewat sinyal lapangan dan bikin memori penuh.
+    const LEBAR_FOTO_MAKS = 1280;
+    const MUTU_JPEG = 0.72;
+
+    let map, activeMarker;
     let selectedLat = -0.50218, selectedLng = 117.15364;
+    let gpsLat = null, gpsLng = null, gpsAkurasi = null;
     let currentRating = 4;
     let currentImageBase64 = '', rawUnstampedImage = null;
-    let salesName = localStorage.getItem('myzona_sales_name') || 'Sales Samarinda';
-    let addressInfo = {kelurahan: '', kota: '', alamatLengkap: ''};
-    window.dataProyekList = JSON.parse(localStorage.getItem('myzona_proyek') || '[]');
+    let sedangMengirim = false;
+    // Safari mode penyamaran melempar galat saat menyentuh localStorage, yang bisa
+    // mematikan seluruh halaman kalau tidak dijaga.
+    const simpanan = {
+      baca(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+      tulis(k, v) { try { localStorage.setItem(k, v); return true; } catch (e) { return false; } }
+    };
+
+    let salesName = simpanan.baca('myzona_sales_name') || 'Sales Samarinda';
+    let addressInfo = { kelurahan: '', kota: '', alamatLengkap: '' };
+
+    let riwayat = muatRiwayat();
+
+    function muatRiwayat() {
+      try {
+        const tersimpan = JSON.parse(simpanan.baca('myzona_riwayat') || 'null');
+        if (Array.isArray(tersimpan)) return tersimpan;
+        // Migrasi dari versi lama yang menyimpan semuanya di 'myzona_proyek'.
+        const lama = JSON.parse(simpanan.baca('myzona_proyek') || '[]');
+        return lama.map(i => ({ ...i, status: 'pending', waktu: i.waktu || new Date().toISOString() }));
+      } catch (err) {
+        return [];
+      }
+    }
+
+    function simpanRiwayat() {
+      try {
+        localStorage.setItem('myzona_riwayat', JSON.stringify(riwayat));
+        return true;
+      } catch (err) {
+        return false; // kuota penyimpanan HP penuh
+      }
+    }
+
+    const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => (
+      { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+    ));
+
+    const waktuSingkat = (iso) => {
+      const d = new Date(iso);
+      return isNaN(d) ? '-' : d.toLocaleString('id-ID', { dateStyle: 'short', timeStyle: 'short' });
+    };
 
     window.onload = function () {
       document.getElementById('display-sales-name').innerText = salesName;
       initMap();
       renderProyekList();
       updateProyekCount();
+      perbaruiBadge();
+      sinkronkan();
+      window.addEventListener('online', sinkronkan);
+      window.addEventListener('offline', perbaruiBadge);
+      setInterval(sinkronkan, 30000);
     };
 
     function changeSalesName() {
       const newName = prompt("Nama / ID Anda:", salesName);
       if (newName && newName.trim() !== '') {
         salesName = newName.trim();
-        localStorage.setItem('myzona_sales_name', salesName);
+        simpanan.tulis('myzona_sales_name', salesName);
         document.getElementById('display-sales-name').innerText = salesName;
       }
     }
 
     // PETA
     function initMap() {
-      map = L.map('map', {zoomControl: false}).setView([selectedLat, selectedLng], 15);
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom: 19}).addTo(map);
+      map = L.map('map', { zoomControl: false }).setView([selectedLat, selectedLng], 15);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
 
       const customIcon = L.divIcon({
         className: 'custom-div-icon',
@@ -272,28 +324,33 @@
         iconSize: [32, 32], iconAnchor: [16, 16]
       });
 
-      activeMarker = L.marker([selectedLat, selectedLng], {draggable: true, icon: customIcon}).addTo(map);
-      activeMarker.on('dragend', function (e) {updateLocationInfo(activeMarker.getLatLng().lat, activeMarker.getLatLng().lng);});
-      map.on('click', function (e) {activeMarker.setLatLng(e.latlng); updateLocationInfo(e.latlng.lat, e.latlng.lng);});
+      activeMarker = L.marker([selectedLat, selectedLng], { draggable: true, icon: customIcon }).addTo(map);
+      activeMarker.on('dragend', () => updateLocationInfo(activeMarker.getLatLng().lat, activeMarker.getLatLng().lng));
+      map.on('click', (e) => { activeMarker.setLatLng(e.latlng); updateLocationInfo(e.latlng.lat, e.latlng.lng); });
 
       getCurrentLocation();
     }
 
     function getCurrentLocation() {
       document.getElementById('gps-accuracy-badge').innerText = "Mencari...";
-      if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(
-          (position) => {
-            const lat = position.coords.latitude; const lng = position.coords.longitude;
-            document.getElementById('gps-accuracy-badge').innerText = `Akurasi: ±${Math.round(position.coords.accuracy)}m`;
-            map.setView([lat, lng], 17);
-            activeMarker.setLatLng([lat, lng]);
-            updateLocationInfo(lat, lng);
-          },
-          (error) => {document.getElementById('gps-accuracy-badge').innerText = "GPS Error";},
-          {enableHighAccuracy: true, timeout: 10000}
-        );
+      if (!navigator.geolocation) {
+        document.getElementById('gps-accuracy-badge').innerText = "GPS tidak tersedia";
+        return;
       }
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const lat = position.coords.latitude, lng = position.coords.longitude;
+          // Bacaan asli perangkat disimpan terpisah dari pin yang bisa digeser
+          // manual, supaya pemilik bisa melihat kalau keduanya berjauhan.
+          gpsLat = lat; gpsLng = lng; gpsAkurasi = position.coords.accuracy;
+          document.getElementById('gps-accuracy-badge').innerText = `Akurasi: ±${Math.round(position.coords.accuracy)}m`;
+          map.setView([lat, lng], 17);
+          activeMarker.setLatLng([lat, lng]);
+          updateLocationInfo(lat, lng);
+        },
+        () => { document.getElementById('gps-accuracy-badge').innerText = "GPS Error"; },
+        { enableHighAccuracy: true, timeout: 10000 }
+      );
     }
 
     async function updateLocationInfo(lat, lng) {
@@ -306,7 +363,8 @@
           addressInfo.alamatLengkap = data.display_name;
         }
       } catch (err) {
-        addressInfo.kelurahan = 'Area Samarinda'; addressInfo.alamatLengkap = `Lat: ${lat.toFixed(5)}, Lng: ${lng.toFixed(5)}`;
+        addressInfo.kelurahan = 'Area Samarinda';
+        addressInfo.alamatLengkap = `Lat: ${lat.toFixed(5)}, Lng: ${lng.toFixed(5)}`;
       }
       document.getElementById('live-address-title').innerText = addressInfo.kelurahan;
       document.getElementById('live-address-detail').innerText = addressInfo.alamatLengkap;
@@ -318,16 +376,20 @@
       const viewList = document.getElementById('view-list');
       const tabMap = document.getElementById('tab-map');
       const tabList = document.getElementById('tab-list');
+      const aktif = "py-3 w-1/2 text-indigo-600 border-b-2 border-indigo-600 flex justify-center items-center gap-1.5";
+      const pasif = "py-3 w-1/2 text-slate-500 flex justify-center items-center gap-1.5";
 
       if (tabName === 'map-view') {
         viewList.classList.add('hidden');
-        tabMap.className = "py-3 w-1/2 text-indigo-600 border-b-2 border-indigo-600 flex justify-center items-center gap-1.5";
-        tabList.className = "py-3 w-1/2 text-slate-500 flex justify-center items-center gap-1.5";
+        viewMap.classList.remove('hidden');
+        tabMap.className = aktif; tabList.className = pasif;
         setTimeout(() => map.invalidateSize(), 200);
       } else {
+        // Peta ikut disembunyikan: panel "Absen Disini" melayang di lapisan atas
+        // dan akan menutupi daftar riwayat kalau dibiarkan.
+        viewMap.classList.add('hidden');
         viewList.classList.remove('hidden');
-        tabList.className = "py-3 w-1/2 text-indigo-600 border-b-2 border-indigo-600 flex justify-center items-center gap-1.5";
-        tabMap.className = "py-3 w-1/2 text-slate-500 flex justify-center items-center gap-1.5";
+        tabList.className = aktif; tabMap.className = pasif;
         renderProyekList();
       }
     }
@@ -343,19 +405,18 @@
       document.getElementById('input-alamat').value = addressInfo.alamatLengkap;
       document.getElementById('input-deskripsi').value = '';
 
-      const detailSection = document.getElementById('optional-details');
-      const icon = document.getElementById('toggle-icon');
-      detailSection.classList.add('hidden'); icon.className = "fa-solid fa-chevron-down";
+      document.getElementById('optional-details').classList.add('hidden');
+      document.getElementById('toggle-icon').className = "fa-solid fa-chevron-down";
       setRating(4);
       document.getElementById('modal-absen').classList.remove('hidden');
     }
-    function closeAbsenModal() {document.getElementById('modal-absen').classList.add('hidden');}
+    function closeAbsenModal() { document.getElementById('modal-absen').classList.add('hidden'); }
     function toggleOptionalDetails() {
       const detailSection = document.getElementById('optional-details');
       const icon = document.getElementById('toggle-icon');
       if (detailSection.classList.contains('hidden')) {
         detailSection.classList.remove('hidden'); icon.className = "fa-solid fa-chevron-up";
-        setTimeout(() => detailSection.scrollIntoView({behavior: 'smooth'}), 100);
+        setTimeout(() => detailSection.scrollIntoView({ behavior: 'smooth' }), 100);
       } else {
         detailSection.classList.add('hidden'); icon.className = "fa-solid fa-chevron-down";
       }
@@ -364,22 +425,26 @@
     // KAMERA & WATERMARK
     function previewImage(event) {
       const file = event.target.files[0];
-      if (file) {
-        const reader = new FileReader();
-        reader.onload = function (e) {
-          const img = new Image();
-          img.onload = function () {rawUnstampedImage = img; processWatermarkOnCanvas(img);};
-          img.src = e.target.result;
-        };
-        reader.readAsDataURL(file);
-      }
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function (e) {
+        const img = new Image();
+        img.onload = function () { rawUnstampedImage = img; processWatermarkOnCanvas(img); };
+        img.onerror = function () { alert("Foto tidak bisa dibaca, coba ambil ulang."); };
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+      event.target.value = ''; // supaya memilih file yang sama lagi tetap memicu onchange
     }
 
     function processWatermarkOnCanvas(img) {
       const canvas = document.getElementById('watermark-canvas');
       const ctx = canvas.getContext('2d');
-      canvas.width = img.width; canvas.height = img.height;
-      ctx.drawImage(img, 0, 0);
+
+      const skala = Math.min(1, LEBAR_FOTO_MAKS / img.width);
+      canvas.width = Math.round(img.width * skala);
+      canvas.height = Math.round(img.height * skala);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
       const barHeight = Math.max(60, Math.floor(canvas.height * 0.15));
       ctx.fillStyle = 'rgba(15, 23, 42, 0.8)';
@@ -394,115 +459,227 @@
       ctx.fillText(`Lat: ${selectedLat.toFixed(5)}, Lng: ${selectedLng.toFixed(5)}`, 20, canvas.height - barHeight + (fontSize * 2) + 12);
 
       ctx.fillStyle = '#cbd5e1';
-      const time = new Date().toLocaleString('id-ID', {timeStyle: 'short', dateStyle: 'short'});
+      const time = new Date().toLocaleString('id-ID', { timeStyle: 'short', dateStyle: 'short' });
       ctx.fillText(`👤 ${salesName} | 🕒 ${time}`, 20, canvas.height - 15);
 
-      currentImageBase64 = canvas.toDataURL('image/jpeg', 0.8);
+      currentImageBase64 = canvas.toDataURL('image/jpeg', MUTU_JPEG);
       document.getElementById('img-preview').src = currentImageBase64;
       document.getElementById('preview-container').classList.remove('hidden');
       document.getElementById('preview-placeholder').classList.add('hidden');
     }
-    function syncManualAddressInputs() {if (rawUnstampedImage) processWatermarkOnCanvas(rawUnstampedImage);}
+    function syncManualAddressInputs() { if (rawUnstampedImage) processWatermarkOnCanvas(rawUnstampedImage); }
     function setRating(stars) {
       currentRating = stars;
-      const starsEls = document.getElementById('rating-stars').querySelectorAll('i');
-      starsEls.forEach((el, index) => {el.className = index < stars ? "fa-solid fa-star" : "fa-regular fa-star text-slate-300";});
+      document.getElementById('rating-stars').querySelectorAll('i').forEach((el, i) => {
+        el.className = i < stars ? "fa-solid fa-star" : "fa-regular fa-star text-slate-300";
+      });
     }
 
-    // SIMPAN & TAMPILKAN
+    // SIMPAN
     function simpanAbsensi() {
       const nama = document.getElementById('input-nama-proyek').value.trim();
       if (!currentImageBase64) return alert("Foto toko wajib diisi!");
       if (!nama) return alert("Nama Toko wajib diisi!");
 
-      const newProyek = {
-        id: `proyek_${Date.now()}`,
-        salesName: salesName,
-        nama: nama,
+      const kunjungan = {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        salesName,
+        nama,
         kelurahan: document.getElementById('input-kelurahan').value || addressInfo.kelurahan,
         alamat: document.getElementById('input-alamat').value || addressInfo.alamatLengkap,
         lat: selectedLat, lng: selectedLng,
-        rating: currentRating, foto: currentImageBase64,
+        gpsLat, gpsLng, akurasi: gpsAkurasi,
+        rating: currentRating,
+        foto: currentImageBase64,
         deskripsi: document.getElementById('input-deskripsi').value,
-        waktu: new Date().toLocaleString('id-ID', {dateStyle: 'short', timeStyle: 'short'})
+        waktu: new Date().toISOString(),
+        status: 'pending'
       };
 
-      window.dataProyekList.unshift(newProyek);
-      localStorage.setItem('myzona_proyek', JSON.stringify(window.dataProyekList));
+      riwayat.unshift(kunjungan);
+      if (!simpanRiwayat()) {
+        riwayat.shift();
+        return alert("Memori HP penuh. Sambungkan internet dulu agar data yang tertunda terkirim, lalu coba lagi.");
+      }
 
-      closeAbsenModal(); updateProyekCount(); switchTab('list-view');
+      closeAbsenModal();
+      updateProyekCount();
+      switchTab('list-view');
+      sinkronkan();
     }
-    function updateProyekCount() {document.getElementById('count-proyek').innerText = window.dataProyekList.length;}
 
-    window.renderProyekList = function () {
+    function updateProyekCount() { document.getElementById('count-proyek').innerText = riwayat.length; }
+
+    // SINKRONISASI KE SERVER
+    async function sinkronkan() {
+      if (sedangMengirim || !navigator.onLine) { perbaruiBadge(); return; }
+      const antrean = riwayat.filter(i => i.status === 'pending');
+      if (antrean.length === 0) { perbaruiBadge(); return; }
+
+      sedangMengirim = true;
+      perbaruiBadge();
+      try {
+        for (const item of antrean) {
+          const res = await fetch(API, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(item)
+          });
+
+          if (res.ok) {
+            const hasil = await res.json();
+            item.status = 'synced';
+            item.fotoUrl = hasil.fotoUrl;
+            delete item.foto; // base64 dibuang supaya memori HP tidak penuh
+            simpanRiwayat();
+            renderProyekList();
+          } else if (res.status >= 400 && res.status < 500) {
+            // Data ditolak permanen; menunggu tidak akan menolong.
+            item.status = 'gagal';
+            item.pesanGagal = (await res.json().catch(() => ({}))).error || 'Ditolak server';
+            simpanRiwayat();
+            renderProyekList();
+          } else {
+            break; // gangguan server/jaringan, coba lagi nanti
+          }
+        }
+      } catch (err) {
+        // sinyal putus di tengah jalan, antrean tetap tersimpan
+      } finally {
+        sedangMengirim = false;
+        perbaruiBadge();
+      }
+    }
+
+    function sinkronkanSekarang() {
+      if (!navigator.onLine) return alert("Belum ada koneksi internet. Data aman tersimpan di HP dan akan terkirim otomatis.");
+      sinkronkan();
+    }
+
+    function perbaruiBadge() {
+      const badge = document.getElementById('sync-badge');
+      const teks = document.getElementById('sync-text');
+      const tertunda = riwayat.filter(i => i.status === 'pending').length;
+      const gagal = riwayat.filter(i => i.status === 'gagal').length;
+      const dasar = "text-[9px] px-2 py-1 rounded-full text-white font-medium flex items-center gap-1 shadow active:scale-95 ";
+
+      if (!navigator.onLine) {
+        badge.className = dasar + "bg-slate-500";
+        teks.innerText = tertunda ? `Offline · ${tertunda} antre` : 'Offline';
+      } else if (sedangMengirim) {
+        badge.className = dasar + "bg-sky-500";
+        teks.innerText = 'Mengirim...';
+      } else if (gagal) {
+        badge.className = dasar + "bg-red-500";
+        teks.innerText = `${gagal} gagal`;
+      } else if (tertunda) {
+        badge.className = dasar + "bg-amber-500";
+        teks.innerText = `${tertunda} belum terkirim`;
+      } else {
+        badge.className = dasar + "bg-emerald-500";
+        teks.innerText = 'Tersimpan';
+      }
+    }
+
+    // DAFTAR RIWAYAT
+    function renderProyekList() {
       const container = document.getElementById('proyek-container');
-      const searchVal = document.getElementById('search-input').value.toLowerCase();
-      const filtered = window.dataProyekList.filter(i => i.nama.toLowerCase().includes(searchVal) || i.kelurahan.toLowerCase().includes(searchVal));
+      const cari = document.getElementById('search-input').value.toLowerCase();
+      const hasil = riwayat.filter(i =>
+        (i.nama || '').toLowerCase().includes(cari) || (i.kelurahan || '').toLowerCase().includes(cari)
+      );
 
-      if (filtered.length === 0) return container.innerHTML = `<p class="text-center text-slate-400 text-xs py-10">Belum ada riwayat kunjungan.</p>`;
+      if (hasil.length === 0) {
+        container.innerHTML = `<p class="text-center text-slate-400 text-xs py-10">Belum ada riwayat kunjungan.</p>`;
+        return;
+      }
 
-      container.innerHTML = filtered.map((item, index) => `
-                <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden mb-3">
-                    <div class="flex">
-                        <img src="${item.foto}" class="w-28 h-36 object-cover bg-slate-100">
-                        <div class="p-2.5 flex-1 flex flex-col justify-between min-w-0">
-                            <div>
-                                <div class="flex justify-between items-start">
-                                    <h4 class="font-bold text-slate-800 text-sm truncate mr-1">${item.nama}</h4>
-                                    <span class="text-[10px] text-amber-500 font-bold whitespace-nowrap">⭐ ${item.rating}</span>
-                                </div>
-                                <p class="text-[10px] text-slate-500 truncate mb-1"><i class="fa-solid fa-map-pin text-indigo-500"></i> ${item.kelurahan}</p>
-                                ${item.deskripsi ? `<div class="text-[10px] text-slate-600 bg-slate-50 p-1.5 rounded border border-slate-100 line-clamp-2">📝 ${item.deskripsi}</div>` : ''}
-                            </div>
-                            <div class="flex justify-between items-end mt-2 pt-2 border-t border-slate-100">
-                                <span class="text-[9px] font-mono text-slate-400">${item.waktu}</span>
-                                <div class="flex gap-3">
-                                    <button onclick="shareKeWhatsApp(${index})" class="text-emerald-600 bg-emerald-50 px-2 py-1 rounded text-xs font-bold flex items-center gap-1 active:scale-95 border border-emerald-100"><i class="fa-brands fa-whatsapp text-sm"></i> Kirim</button>
-                                    <button onclick="hapusProyek('${item.id}')" class="text-red-400 text-xs active:scale-95 px-1"><i class="fa-solid fa-trash"></i></button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+      const lencana = {
+        pending: `<span class="text-[9px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-bold">Belum terkirim</span>`,
+        synced: `<span class="text-[9px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded font-bold">Terkirim</span>`,
+        gagal: `<span class="text-[9px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded font-bold">Gagal</span>`
+      };
+
+      container.innerHTML = hasil.map((item) => `
+        <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden mb-3">
+          <div class="flex">
+            <img src="${esc(item.foto || item.fotoUrl || '')}" loading="lazy" class="w-28 h-36 object-cover bg-slate-100">
+            <div class="p-2.5 flex-1 flex flex-col justify-between min-w-0">
+              <div>
+                <div class="flex justify-between items-start">
+                  <h4 class="font-bold text-slate-800 text-sm truncate mr-1">${esc(item.nama)}</h4>
+                  <span class="text-[10px] text-amber-500 font-bold whitespace-nowrap">⭐ ${esc(item.rating)}</span>
                 </div>
-            `).join('');
-    };
+                <div class="flex items-center gap-1.5 mb-1">${lencana[item.status] || ''}</div>
+                <p class="text-[10px] text-slate-500 truncate mb-1"><i class="fa-solid fa-map-pin text-indigo-500"></i> ${esc(item.kelurahan)}</p>
+                ${item.deskripsi ? `<div class="text-[10px] text-slate-600 bg-slate-50 p-1.5 rounded border border-slate-100 line-clamp-2">📝 ${esc(item.deskripsi)}</div>` : ''}
+              </div>
+              <div class="flex justify-between items-end mt-2 pt-2 border-t border-slate-100">
+                <span class="text-[9px] font-mono text-slate-400">${esc(waktuSingkat(item.waktu))}</span>
+                <div class="flex gap-3">
+                  <button onclick="shareKeWhatsApp('${esc(item.id)}')" class="text-emerald-600 bg-emerald-50 px-2 py-1 rounded text-xs font-bold flex items-center gap-1 active:scale-95 border border-emerald-100"><i class="fa-brands fa-whatsapp text-sm"></i> Kirim</button>
+                  <button onclick="hapusProyek('${esc(item.id)}')" class="text-red-400 text-xs active:scale-95 px-1"><i class="fa-solid fa-trash"></i></button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      `).join('');
+    }
 
     // SHARE WHATSAPP
-    window.shareKeWhatsApp = function (index) {
-      const data = window.dataProyekList[index];
+    function shareKeWhatsApp(id) {
+      const data = riwayat.find(i => String(i.id) === String(id));
+      if (!data) return;
+
       let waText = `*LAPORAN KUNJUNGAN SALES*\n`;
       waText += `----------------------------\n`;
       waText += `👤 *Sales:* ${data.salesName}\n`;
       waText += `🏢 *Toko:* ${data.nama}\n`;
       waText += `📍 *Area:* ${data.kelurahan}\n`;
-      waText += `📅 *Waktu:* ${data.waktu}\n`;
+      waText += `📅 *Waktu:* ${waktuSingkat(data.waktu)}\n`;
       waText += `⭐ *Rating:* ${data.rating}/5\n`;
-
-      if (data.deskripsi) {waText += `\n*📦 Catatan Pesanan:*\n${data.deskripsi}\n`;}
+      if (data.deskripsi) waText += `\n*📦 Catatan Pesanan:*\n${data.deskripsi}\n`;
       waText += `\n*🗺️ Titik Peta (GPS):*\nhttps://www.google.com/maps?q=${data.lat},${data.lng}\n`;
+      if (data.fotoUrl) waText += `\n*📷 Foto:*\n${data.fotoUrl}\n`;
 
       window.open(`https://wa.me/?text=${encodeURIComponent(waText)}`, '_blank');
-    };
+    }
 
     function hapusProyek(id) {
-      if (confirm("Hapus data kunjungan ini?")) {
-        window.dataProyekList = window.dataProyekList.filter(i => String(i.id) !== String(id));
-        localStorage.setItem('myzona_proyek', JSON.stringify(window.dataProyekList));
-        renderProyekList(); updateProyekCount();
-      }
+      const data = riwayat.find(i => String(i.id) === String(id));
+      if (!data) return;
+
+      const pesan = data.status === 'synced'
+        ? "Hapus dari HP ini? Data yang sudah terkirim tetap tersimpan di pusat."
+        : "Data ini BELUM terkirim ke pusat. Kalau dihapus, hilang selamanya. Lanjutkan?";
+      if (!confirm(pesan)) return;
+
+      riwayat = riwayat.filter(i => String(i.id) !== String(id));
+      simpanRiwayat();
+      renderProyekList();
+      updateProyekCount();
+      perbaruiBadge();
     }
 
     // EXPORT CSV
-    window.exportToCSV = function () {
-      if (window.dataProyekList.length === 0) return alert("Belum ada data untuk diexport!");
-      let csvContent = "data:text/csv;charset=utf-8,Waktu Kunjungan,Nama Toko,Kelurahan,Alamat Lengkap,Rating,Latitude,Longitude,Catatan Pesanan,Nama Sales\n";
-      window.dataProyekList.forEach(row => {
-        let safeNama = row.nama.replace(/"/g, '""'); let safeAlamat = row.alamat.replace(/"/g, '""'); let safeCatatan = row.deskripsi ? row.deskripsi.replace(/"/g, '""') : "";
-        csvContent += `"${row.waktu}","${safeNama}","${row.kelurahan}","${safeAlamat}","${row.rating}","${row.lat}","${row.lng}","${safeCatatan}","${row.salesName}"\r\n`;
-      });
-      const link = document.createElement("a"); link.setAttribute("href", encodeURI(csvContent));
-      link.setAttribute("download", `Laporan_Sales_${new Date().toISOString().split('T')[0]}.csv`);
+    function exportToCSV() {
+      if (riwayat.length === 0) return alert("Belum ada data untuk diexport!");
+      const kolom = ["Waktu Kunjungan", "Nama Toko", "Kelurahan", "Alamat Lengkap", "Rating", "Latitude", "Longitude", "Catatan Pesanan", "Nama Sales", "Status"];
+      const sel = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+
+      const baris = riwayat.map(r => [
+        waktuSingkat(r.waktu), r.nama, r.kelurahan, r.alamat, r.rating, r.lat, r.lng, r.deskripsi, r.salesName, r.status
+      ].map(sel).join(','));
+
+      // ﻿ (BOM) supaya huruf beraksen tidak berantakan saat dibuka di Excel.
+      const isi = '﻿' + kolom.map(sel).join(',') + '\r\n' + baris.join('\r\n');
+      const url = URL.createObjectURL(new Blob([isi], { type: 'text/csv;charset=utf-8;' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `Laporan_Sales_${new Date().toISOString().split('T')[0]}.csv`;
       document.body.appendChild(link); link.click(); document.body.removeChild(link);
+      URL.revokeObjectURL(url);
     }
   </script>
 </body>
