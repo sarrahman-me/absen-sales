@@ -17,7 +17,18 @@ Alamat dashboard = alamat aplikasi + `/dashboard.html`
 
 ## Yang harus disiapkan sekali di Vercel
 
-Tanpa tiga langkah ini aplikasi akan menampilkan error saat menyimpan.
+Kodenya sudah ter-deploy, tapi belum tersambung ke database. Untuk memeriksa
+apa yang masih kurang kapan saja, buka alamat ini di peramban:
+
+```
+https://absen-sales.vercel.app/api/kunjungan
+```
+
+Halaman itu akan menyebutkan persis variabel mana yang belum terisi.
+Kalau sudah beres, balasannya berubah menjadi permintaan kata sandi.
+
+Selama tiga langkah di bawah belum selesai, absensi tetap bisa dilakukan —
+datanya mengantre di HP dan terkirim sendiri begitu penyiapan rampung.
 
 **1. Penyimpanan foto (Vercel Blob)**
 Buka proyek `absen-sales` di Vercel → menu **Storage** → **Create Database** → pilih **Blob** →
