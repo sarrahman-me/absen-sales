@@ -146,6 +146,7 @@
 
     let sandi = simpanan.baca('myzona_sandi_pemilik') || '';
     let data = [];
+    let pesanGalat = '';
     let peta, lapisanPin;
 
     const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => (
@@ -184,7 +185,7 @@
         return;
       }
       if (hasil === 'error') {
-        pesan.innerText = 'Server bermasalah. Coba lagi sebentar.';
+        pesan.innerText = pesanGalat;
         pesan.classList.remove('hidden');
         return;
       }
@@ -214,13 +215,19 @@
       try {
         const res = await fetch(`${API}?${q}`, { headers: { 'x-owner-password': sandi } });
         if (res.status === 401) return 'salah';
-        if (!res.ok) return 'error';
+        if (!res.ok) {
+          // Pesan asli server ditampilkan apa adanya: kalau penyiapan Vercel
+          // belum lengkap, di situlah keterangannya.
+          pesanGalat = (await res.json().catch(() => ({}))).error || 'Server bermasalah. Coba lagi sebentar.';
+          return 'error';
+        }
 
         const hasil = await res.json();
         data = hasil.kunjungan || [];
         isiPilihanSales(hasil.daftarSales || []);
         return 'ok';
       } catch (err) {
+        pesanGalat = 'Tidak bisa menghubungi server. Periksa koneksi internet.';
         return 'error';
       }
     }
@@ -228,7 +235,7 @@
     async function muatData() {
       const hasil = await ambil();
       if (hasil === 'salah') return keluar();
-      if (hasil === 'error') return alert('Gagal memuat data. Periksa koneksi internet.');
+      if (hasil === 'error') return alert(pesanGalat);
       render();
     }
 

@@ -1,7 +1,14 @@
 import { neon } from '@neondatabase/serverless';
 import { put, del } from '@vercel/blob';
 
-const sql = neon(process.env.DATABASE_URL);
+// Dibuat saat dipakai, bukan saat berkas dimuat: neon() melempar galat kalau
+// DATABASE_URL belum diatur, dan itu mematikan fungsi sebelum sempat
+// mengembalikan pesan yang bisa dibaca.
+let _sql = null;
+function db() {
+  if (!_sql) _sql = neon(process.env.DATABASE_URL);
+  return _sql;
+}
 
 // Batas ukuran foto setelah dikompres di HP. Aplikasi sales menargetkan ~300 KB,
 // jadi 5 MB memberi ruang aman tanpa menembus batas payload Vercel (4.5 MB base64).
@@ -11,7 +18,7 @@ let schemaReady = null;
 function ensureSchema() {
   if (!schemaReady) {
     schemaReady = (async () => {
-      await sql`
+      await db()`
         create table if not exists kunjungan (
           id          text primary key,
           sales_name  text not null,
@@ -30,7 +37,7 @@ function ensureSchema() {
           dibuat_pada timestamptz not null default now()
         )
       `;
-      await sql`create index if not exists kunjungan_waktu_idx on kunjungan (waktu desc)`;
+      await db()`create index if not exists kunjungan_waktu_idx on kunjungan (waktu desc)`;
     })().catch((err) => {
       schemaReady = null; // biar percobaan berikutnya mencoba lagi
       throw err;
@@ -80,9 +87,18 @@ function barisKeObjek(r) {
 
 export default async function handler(req, res) {
   try {
-    if (!process.env.DATABASE_URL) {
-      return res.status(500).json({ error: 'DATABASE_URL belum diatur di Environment Variables Vercel.' });
+    // Pesan yang menyebut nama variabelnya persis, supaya penyiapan di Vercel
+    // yang belum lengkap langsung ketahuan tanpa perlu membaca log.
+    const kurang = [
+      !process.env.DATABASE_URL && 'DATABASE_URL (hubungkan Neon Postgres di menu Storage)',
+      !process.env.BLOB_READ_WRITE_TOKEN && 'BLOB_READ_WRITE_TOKEN (hubungkan Blob di menu Storage)',
+      !process.env.OWNER_PASSWORD && 'OWNER_PASSWORD (isi di Settings > Environment Variables)',
+    ].filter(Boolean);
+
+    if (kurang.length) {
+      return res.status(503).json({ error: `Penyiapan Vercel belum lengkap. Yang belum ada: ${kurang.join('; ')}.` });
     }
+
     await ensureSchema();
 
     if (req.method === 'POST') return await simpanKunjungan(req, res);
@@ -120,7 +136,7 @@ async function simpanKunjungan(req, res) {
   if (isiFoto.length === 0) return res.status(400).json({ error: 'Foto kosong.' });
   if (isiFoto.length > MAX_FOTO_BYTES) return res.status(413).json({ error: 'Ukuran foto terlalu besar.' });
 
-  const sudahAda = await sql`select foto_url from kunjungan where id = ${id}`;
+  const sudahAda = await db()`select foto_url from kunjungan where id = ${id}`;
   if (sudahAda.length > 0) {
     return res.status(200).json({ ok: true, duplikat: true, fotoUrl: sudahAda[0].foto_url });
   }
@@ -136,7 +152,7 @@ async function simpanKunjungan(req, res) {
   const rating = Number.isInteger(b.rating) && b.rating >= 1 && b.rating <= 5 ? b.rating : null;
   const akurasi = Number.isFinite(b.akurasi) ? Math.round(b.akurasi) : null;
 
-  await sql`
+  await db()`
     insert into kunjungan
       (id, sales_name, nama_toko, kelurahan, alamat, lat, lng, gps_lat, gps_lng, akurasi_m, rating, deskripsi, foto_url, waktu)
     values
@@ -165,7 +181,7 @@ async function ambilKunjungan(req, res) {
     akhir.setDate(akhir.getDate() + 1);
   }
 
-  const baris = await sql`
+  const baris = await db()`
     select * from kunjungan
     where (${mulai}::timestamptz is null or waktu >= ${mulai})
       and (${akhir}::timestamptz is null or waktu < ${akhir})
@@ -174,7 +190,7 @@ async function ambilKunjungan(req, res) {
     limit 1000
   `;
 
-  const daftarSales = await sql`select distinct sales_name from kunjungan order by sales_name`;
+  const daftarSales = await db()`select distinct sales_name from kunjungan order by sales_name`;
 
   return res.status(200).json({
     kunjungan: baris.map(barisKeObjek),
@@ -189,7 +205,7 @@ async function hapusKunjungan(req, res) {
   const id = teks(req.query?.id, 80);
   if (!id) return res.status(400).json({ error: 'id wajib diisi.' });
 
-  const dihapus = await sql`delete from kunjungan where id = ${id} returning foto_url`;
+  const dihapus = await db()`delete from kunjungan where id = ${id} returning foto_url`;
   if (dihapus.length === 0) return res.status(404).json({ error: 'Data tidak ditemukan.' });
 
   // Foto ikut dibuang supaya tidak menumpuk sebagai file yatim di penyimpanan.
