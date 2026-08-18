@@ -113,10 +113,15 @@
       <div id="map"></div>
 
       <!-- Panel melayang: keterangan lokasi + tombol utama -->
-      <div class="absolute inset-x-3 sm:inset-x-4 bottom-3 sm:bottom-4 z-[1000] pointer-events-none">
+      <div id="panel-melayang" class="absolute inset-x-3 sm:inset-x-4 bottom-3 sm:bottom-4 z-[1000] pointer-events-none">
         <div class="mx-auto max-w-md lg:mx-0 flex flex-col items-stretch gap-2.5">
 
-          <div class="flex justify-end">
+          <div class="flex justify-end gap-2">
+            <button onclick="lihatSemuaKunjungan()" id="tombol-semua" aria-label="Lihat semua kunjungan"
+              title="Lihat semua kunjungan"
+              class="hidden pointer-events-auto h-11 px-3.5 bg-white text-indigo-700 rounded-full kartu-lembut flex items-center gap-2 text-[12px] font-bold active:scale-95 transition ring-1 ring-slate-200">
+              <i class="fa-solid fa-shop text-[13px]"></i> Semua kunjungan
+            </button>
             <button onclick="getCurrentLocation()" aria-label="Cari posisi saya sekarang"
               class="pointer-events-auto w-11 h-11 bg-white text-indigo-700 rounded-full kartu-lembut grid place-items-center text-lg active:scale-95 transition ring-1 ring-slate-200">
               <i id="ikon-gps" class="fa-solid fa-crosshairs"></i>
@@ -331,7 +336,7 @@
     const LEBAR_SISIPAN = 160;
     const MUTU_SISIPAN = 0.5;
 
-    let map, activeMarker, lapisanRiwayat;
+    let map, activeMarker, lapisanRiwayat, titikRiwayat = [];
     let selectedLat = -0.50218, selectedLng = 117.15364;
     let gpsLat = null, gpsLng = null, gpsAkurasi = null;
     let currentRating = 4;
@@ -453,9 +458,11 @@
 
       const warna = { pending: '#f59e0b', gagal: '#dc2626' };
       const label = { pending: 'Belum terkirim', gagal: 'Gagal terkirim', synced: 'Terkirim' };
+      titikRiwayat = [];
 
       riwayat.forEach(item => {
         if (typeof item.lat !== 'number' || typeof item.lng !== 'number') return;
+        titikRiwayat.push([item.lat, item.lng]);
         const cat = warna[item.status] || '#4f46e5';
 
         const ikon = L.divIcon({
@@ -476,6 +483,26 @@
             </div>
           `)
           .addTo(lapisanRiwayat);
+      });
+
+      document.getElementById('tombol-semua').classList.toggle('hidden', titikRiwayat.length === 0);
+    }
+
+    // Perkecil tampilan sampai semua toko yang pernah diabsen muat di layar.
+    // Tanpa ini sales harus zoom-out manual untuk melihat sebarannya.
+    function lihatSemuaKunjungan() {
+      if (!map || titikRiwayat.length === 0) return pesan("Belum ada kunjungan untuk ditampilkan.", 'ingat');
+      if (!layarLebar()) switchTab('map-view'); // di HP peta bisa sedang tertutup daftar riwayat
+      map.invalidateSize();
+      // Panel "Absen Disini" menutupi bagian bawah peta, jadi ruang untuk pin
+      // dipotong setinggi panel itu supaya tidak ada toko yang tersembunyi.
+      const tinggiPanel = document.getElementById('panel-melayang').offsetHeight;
+      // maxZoom menahan peta supaya tidak menempel terlalu dekat kalau kunjungannya
+      // cuma satu atau semuanya di satu blok yang sama.
+      map.fitBounds(titikRiwayat, {
+        paddingTopLeft: [40, 40],
+        paddingBottomRight: [40, tinggiPanel + 24],
+        maxZoom: 16
       });
     }
 

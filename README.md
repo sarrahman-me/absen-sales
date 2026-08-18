@@ -65,8 +65,9 @@ Variabel baru hanya terbaca oleh deployment yang dibuat setelah variabel ditamba
 
 Di tab **Peta Absen** ikut tampil pin semua toko yang pernah diabsen dari HP itu
 (indigo = terkirim, kuning = belum terkirim, merah = gagal). Tekan pin untuk melihat
-sisipan foto, nama toko, waktu, dan tautan ke Google Maps. Di daftar **Riwayat**,
-tiap kartu punya tombol peta untuk membuka titik toko itu di Google Maps.
+sisipan foto, nama toko, waktu, dan tautan ke Google Maps. Tombol **Semua kunjungan**
+memperkecil peta sampai seluruh toko muat di layar. Di daftar **Riwayat**, tiap kartu
+punya tombol peta untuk membuka titik toko itu di Google Maps.
 
 Yang tampil di HP sales hanya kunjungannya sendiri — bukan kunjungan sales lain.
 Rekap semua sales tetap hanya di dashboard pemilik.
