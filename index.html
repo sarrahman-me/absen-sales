@@ -331,7 +331,7 @@
     const LEBAR_SISIPAN = 160;
     const MUTU_SISIPAN = 0.5;
 
-    let map, activeMarker;
+    let map, activeMarker, lapisanRiwayat;
     let selectedLat = -0.50218, selectedLng = 117.15364;
     let gpsLat = null, gpsLng = null, gpsAkurasi = null;
     let currentRating = 4;
@@ -431,11 +431,52 @@
         iconSize: [36, 36], iconAnchor: [18, 18]
       });
 
+      // Pin kunjungan lama digambar di lapisan sendiri supaya gampang
+      // dihapus-gambar ulang, dan dipasang sebelum pin aktif supaya tidak
+      // menutupinya.
+      lapisanRiwayat = L.layerGroup().addTo(map);
+
       activeMarker = L.marker([selectedLat, selectedLng], { draggable: true, icon: customIcon }).addTo(map);
+      activeMarker.setZIndexOffset(1000); // pin yang bisa digeser harus selalu di atas
       activeMarker.on('dragend', () => updateLocationInfo(activeMarker.getLatLng().lat, activeMarker.getLatLng().lng));
       map.on('click', (e) => { activeMarker.setLatLng(e.latlng); updateLocationInfo(e.latlng.lat, e.latlng.lng); });
 
+      gambarPinRiwayat();
       getCurrentLocation();
+    }
+
+    // Sebaran toko yang pernah diabsen dari HP ini. Warnanya mengikuti lencana
+    // di daftar riwayat supaya sales langsung tahu mana yang belum terkirim.
+    function gambarPinRiwayat() {
+      if (!lapisanRiwayat) return;
+      lapisanRiwayat.clearLayers();
+
+      const warna = { pending: '#f59e0b', gagal: '#dc2626' };
+      const label = { pending: 'Belum terkirim', gagal: 'Gagal terkirim', synced: 'Terkirim' };
+
+      riwayat.forEach(item => {
+        if (typeof item.lat !== 'number' || typeof item.lng !== 'number') return;
+        const cat = warna[item.status] || '#4f46e5';
+
+        const ikon = L.divIcon({
+          className: '',
+          html: `<div style="background:${cat}" class="w-7 h-7 rounded-full flex items-center justify-center shadow-lg border-2 border-white text-white text-[11px] transform -translate-x-1/2 -translate-y-1/2"><i class="fa-solid fa-shop"></i></div>`,
+          iconSize: [28, 28], iconAnchor: [14, 14]
+        });
+
+        const sisipan = item.thumb || item.foto;
+
+        L.marker([item.lat, item.lng], { icon: ikon })
+          .bindPopup(`
+            <div style="min-width:170px;line-height:1.45">
+              ${sisipan ? `<img src="${esc(sisipan)}" alt="" style="width:100%;height:96px;object-fit:cover;border-radius:8px;margin-bottom:6px">` : ''}
+              <b style="font-size:13px">${esc(item.nama)}</b><br>
+              <span style="color:#64748b;font-size:12px">${esc(waktuSingkat(item.waktu))}<br>${esc(label[item.status] || '')}</span><br>
+              <a href="https://www.google.com/maps?q=${esc(item.lat)},${esc(item.lng)}" target="_blank" rel="noopener" style="font-weight:600">Buka di Google Maps</a>
+            </div>
+          `)
+          .addTo(lapisanRiwayat);
+      });
     }
 
     function getCurrentLocation() {
@@ -658,6 +699,7 @@
 
       closeAbsenModal();
       updateProyekCount();
+      gambarPinRiwayat();
       switchTab('list-view');
       pesan(`Kunjungan "${nama}" tersimpan.`, 'sukses');
       sinkronkan();
@@ -689,12 +731,14 @@
             delete item.foto; // base64 ukuran penuh dibuang, sisipan kecil tetap disimpan
             simpanRiwayat();
             renderProyekList();
+            gambarPinRiwayat();
           } else if (res.status >= 400 && res.status < 500) {
             // Data ditolak permanen; menunggu tidak akan menolong.
             item.status = 'gagal';
             item.pesanGagal = (await res.json().catch(() => ({}))).error || 'Ditolak server';
             simpanRiwayat();
             renderProyekList();
+            gambarPinRiwayat();
           } else {
             break; // gangguan server/jaringan, coba lagi nanti
           }
@@ -787,6 +831,7 @@
 
             <p class="text-[11px] text-slate-500 truncate mt-1.5">
               <i class="fa-solid fa-location-dot text-indigo-500"></i> ${esc(item.kelurahan)}
+              ${item.akurasi != null ? `<span class="text-slate-400">· ±${esc(Math.round(item.akurasi))} m</span>` : ''}
             </p>
 
             ${item.deskripsi ? `
@@ -800,6 +845,10 @@
             <div class="flex justify-between items-center gap-2 mt-auto pt-2.5">
               <span class="text-[10px] text-slate-400 truncate">${esc(waktuSingkat(item.waktu))}</span>
               <div class="flex gap-1.5 shrink-0">
+                <a href="https://www.google.com/maps?q=${esc(item.lat)},${esc(item.lng)}" target="_blank" rel="noopener"
+                  class="text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1.5 rounded-lg text-[11px] font-bold flex items-center gap-1 active:scale-95 transition">
+                  <i class="fa-solid fa-diamond-turn-right"></i><span class="hidden sm:inline">Peta</span>
+                </a>
                 <button onclick="shareKeWhatsApp('${esc(item.id)}')"
                   class="text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-2.5 py-1.5 rounded-lg text-[11px] font-bold flex items-center gap-1 active:scale-95 transition">
                   <i class="fa-brands fa-whatsapp text-[13px]"></i> Kirim
@@ -847,6 +896,7 @@
       riwayat = riwayat.filter(i => String(i.id) !== String(id));
       simpanRiwayat();
       renderProyekList();
+      gambarPinRiwayat();
       updateProyekCount();
       perbaruiBadge();
       pesan("Kunjungan dihapus dari HP ini.", 'info');

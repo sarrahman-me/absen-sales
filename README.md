@@ -8,7 +8,7 @@ lalu datanya masuk ke pusat data yang bisa dipantau pemilik.
 
 | Berkas | Kegunaan |
 | --- | --- |
-| `index.html` | Aplikasi sales (dibuka di HP). Peta, kamera, form kunjungan, riwayat. |
+| `index.html` | Aplikasi sales (dibuka di HP). Peta, kamera, form kunjungan, riwayat, peta sebaran kunjungannya sendiri. |
 | `dashboard.html` | Dashboard pemilik. Terkunci kata sandi. Ringkasan, filter, peta sebaran, export. |
 | `api/kunjungan.js` | Penghubung ke database & penyimpanan foto. |
 
@@ -62,6 +62,14 @@ Variabel baru hanya terbaca oleh deployment yang dibuat setelah variabel ditamba
 
 **Sales** — buka alamat aplikasi di HP, tekan nama di pojok kiri atas untuk mengisi nama sendiri
 (cukup sekali), lalu setiap sampai di toko: tekan **Absen Disini** → foto → nama toko → simpan.
+
+Di tab **Peta Absen** ikut tampil pin semua toko yang pernah diabsen dari HP itu
+(indigo = terkirim, kuning = belum terkirim, merah = gagal). Tekan pin untuk melihat
+sisipan foto, nama toko, waktu, dan tautan ke Google Maps. Di daftar **Riwayat**,
+tiap kartu punya tombol peta untuk membuka titik toko itu di Google Maps.
+
+Yang tampil di HP sales hanya kunjungannya sendiri — bukan kunjungan sales lain.
+Rekap semua sales tetap hanya di dashboard pemilik.
 
 **Pemilik** — buka `/dashboard.html`, masukkan kata sandi, lihat semua kunjungan semua sales.
 
